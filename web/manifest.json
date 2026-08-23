@@ -1,6 +1,6 @@
 {
-    "name": "pertanian_app",
-    "short_name": "pertanian_app",
+    "name": "alburdat_dashboard",
+    "short_name": "alburdat_dashboard",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.masperdana" "\0"
-            VALUE "FileDescription", "pertanian_app" "\0"
+            VALUE "CompanyName", "com.example" "\0"
+            VALUE "FileDescription", "alburdat_dashboard" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "pertanian_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.masperdana. All rights reserved." "\0"
-            VALUE "OriginalFilename", "pertanian_app.exe" "\0"
-            VALUE "ProductName", "pertanian_app" "\0"
+            VALUE "InternalName", "alburdat_dashboard" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
+            VALUE "OriginalFilename", "alburdat_dashboard.exe" "\0"
+            VALUE "ProductName", "alburdat_dashboard" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

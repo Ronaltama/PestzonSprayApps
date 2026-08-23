@@ -1,4 +1,4 @@
-package com.masperdana.pertanian_app
+package com.example.alburdat_dashboard
 
 import io.flutter.embedding.android.FlutterActivity
 
