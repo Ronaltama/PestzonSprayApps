@@ -1,233 +1,151 @@
-# Alburdat Presisi - Sistem Pupuk IoT
+# 🌿 Alburdat Presisi - Sistem Kontrol & Monitoring Pemupukan Presisi IoT
 
-[![Flutter](https://flutter.dev/images/flutter-logo-sharing.png)](https://flutter.dev)
+[![Flutter](https://img.shields.io/badge/Flutter-3.11.1+-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
+[![MQTT](https://img.shields.io/badge/MQTT-v3.1.1-660099?style=for-the-badge&logo=mqtt&logoColor=white)](https://mqtt.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20|%20Android%20|%20iOS%20|%20Web%20|%20Windows%20|%20macOS-blue?style=for-the-badge)](https://flutter.dev)
 
-**Alburdat Presisi** adalah sistem IoT lengkap untuk kontrol dan monitoring perangkat pemberi pupuk presisi berbasis ESP32. Terdiri dari firmware ESP32, aplikasi Flutter Dashboard (multi-platform), dan MQTT komunikasi real-time.
-
-## 📚 Dokumentasi
-
-### Untuk Pengguna Akhir
-
-- **[USER_GUIDE.md](docs/USER_GUIDE.md)** — Panduan lengkap untuk petani/pengguna
-  - Setup hardware
-  - Konfigurasi WiFi
-  - Menggunakan aplikasi
-  - Fitur-fitur detail
-  - Troubleshooting
-
-### Untuk Developer / Engineer
-
-- **[QUICK_START.md](docs/QUICK_START.md)** — Setup & run dalam 15 menit ⚡
-- **[SETUP.md](docs/SETUP.md)** — Environment setup detail untuk semua OS
-- **[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)** — Panduan development komprehensif
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Arsitektur sistem & design patterns
-- **[API_REFERENCE.md](docs/API_REFERENCE.md)** — Complete API documentation
-- **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — Problem solving guide
+**Alburdat Presisi** adalah aplikasi kontrol & monitoring IoT (*Internet of Things*) untuk alat pemberi pupuk otomatis berbasis mikrokontroler (ESP32). Aplikasi ini dirancang untuk mendukung **Pertanian Presisi (*Precision Agriculture*)** dengan mengintegrasikan **Sistem Pakar (*Expert System / Rule-Based AI*)** untuk kalkulasi pemupukan otomatis berdasarkan komoditas dan usia tanaman.
 
 ---
 
-## ⚡ Quick Start (Developers)
+## 📌 Mengapa Ada AI / Sistem Pakar di Aplikasi Ini?
 
+Di bidang pertanian, dosis pupuk yang terlalu sedikit (*under-fertilization*) membuat tanaman kerdil, sedangkan dosis berlebih (*over-fertilization*) dapat merusak tanah dan membakar akar tanaman. Penentuan dosis ideal memerlukan perhitungan akurat berdasarkan:
+- **Jenis Komoditas** (Jagung, Sawit, Kopi, Durian, dll.)
+- **Umur Tanaman dalam HST** (*Hari Setelah Tanam*)
+- **Jenis Pupuk** (NPK, Urea, dll.)
+- **Jumlah Tanaman & Jarak Tanam**
+
+Aplikasi ini menggunakan **Sistem Pakar berbasis Aturan (*Rule-Based Expert System*)** di `lib/services/expert_system_service.dart` dan `lib/data/knowledge_base.dart`. 
+Sistem ini bertindak sebagai **"Pakar Agronomi Digital"** yang secara otomatis:
+1. Memadankan usia tanaman (HST) dengan aturan agrikultur spesifik.
+2. Mengalikan bobot pupuk dengan *multiplier factor* jenis pupuk.
+3. Menghitung akumulasi total gram pupuk yang dibutuhkan seluruh lahan.
+4. Mengirimkan dosis presisi tersebut langsung ke perangkat IoT ESP32 via MQTT.
+
+---
+
+## 🔄 Alur Aplikasi (App Flow) & Use Cases
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Buka Aplikasi Flutter Dashboard            │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+            Auto-Connect ke Broker MQTT (broker.emqx.io)
+                            │
+       ┌────────────────────┼────────────────────┐
+       ▼                    ▼                    ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  Mode 1:     │    │  Mode 2:     │    │  Mode 3:     │
+│ Rekomendasi  │    │ Kontrol      │    │ Konfigurasi  │
+│  Sistem      │    │ Dosis Manual │    │ WiFi Device  │
+│   Pakar      │    │ (Gram/Slider)│    │   (Reset)    │
+└──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+       │                   │                   │
+       └───────────────────┼───────────────────┘
+                           │ Kirim Command JSON via MQTT
+                           ▼
+             ┌──────────────────────────┐
+             │    MQTT Server / Broker  │
+             └─────────────┬────────────┘
+                           │ Telemetri & Exec
+                           ▼
+             ┌──────────────────────────┐
+             │ Perangkat ESP32 Hardware │
+             │ - Dispenser Motor        │
+             │ - Screen OLED            │
+             │ - Storage EEPROM         │
+             └─────────────┬────────────┘
+                           │ Feedback Status Real-time
+                           ▼
+             ┌──────────────────────────┐
+             │  Dashboard UI Monitoring │
+             │  - Real-time Status      │
+             │  - Grafik fl_chart       │
+             └──────────────────────────┘
+```
+
+### 🎯 Main Use Cases:
+1. **Rekomendasi Pemupukan Otomatis**: Petani tidak perlu menghitung dosis manual. Cukup pilih jenis tanaman dan masukkan berapa hari usianya (HST), sistem pakar akan menentukan dosis paling optimal.
+2. **Eksekusi Pemupukan Jarak Jauh**: Mengirimkan sinyal pemupukan (gram/ml) langsung ke mesin dispenser pupuk di lapangan via internet/MQTT.
+3. **Monitoring & Tracking Telemetri**: Memantau status aktif motor dispenser, konektivitas alat, serta grafik statistik akumulasi pemupukan harian.
+4. **Manajemen Jaringan Alat**: Melakukan reset/rekonfigurasi WiFi ESP32 langsung melalui aplikasi tanpa perlu membongkar alat.
+
+---
+
+## 🛠️ Teknologi & Stack yang Digunakan
+
+- **Framework Frontend**: [Flutter](https://flutter.dev) (Dart SDK `^3.11.1`) - Suport multi-platform native.
+- **State Management**: [Provider](https://pub.dev/packages/provider) (`^6.1.1`) - Manajemen state reaktif untuk status device & koneksi MQTT.
+- **Komunikasi Real-Time**: [mqtt_client](https://pub.dev/packages/mqtt_client) (`^10.11.9`) - Protokol publish/subscribe ringan berlatensi rendah.
+- **Visualisasi Data**: [fl_chart](https://pub.dev/packages/fl_chart) (`^1.2.0`) - Grafik statistik penggunaan pupuk.
+- **Rule Engine (AI)**: Pure Dart Expert System (`knowledge_base.dart` & `ExpertSystemService`).
+- **UI & Animasi**: `google_fonts`, `lottie`, `flutter_svg`.
+- **Target Hardware**: ESP32 dengan firmware dispenser pupuk, motor DC/stepper, layar OLED & EEPROM.
+
+---
+
+## 📁 Struktur Folder Project
+
+```text
+lib/
+├── data/
+│   └── knowledge_base.dart        # Agronomy Knowledge Base (Rules 13+ komoditas & multiplier pupuk)
+├── models/
+│   ├── calculation_input.dart     # Data model input rekomendasi
+│   ├── calculation_result.dart    # Data model hasil kalkulasi dosis
+│   ├── commodity.dart             # Master data komoditas & jarak tanam
+│   ├── device_status.dart         # Status telemetri ESP32 (motor, dosis, stats)
+│   ├── fertilizer.dart            # Master data jenis pupuk
+│   └── rule.dart                  # Model aturan Sistem Pakar (HST min/max → dosis)
+├── services/
+│   ├── expert_system_service.dart # Engine Sistem Pakar (Kalkulator Dosis AI)
+│   └── mqtt_service.dart          # Komunikasi MQTT Client & Auto-reconnect
+├── screens/
+│   ├── main_navigation_screen.dart # Navigasi utama (Bottom bar / Sidebar)
+│   ├── dashboard_page.dart        # Monitoring status real-time & grafik
+│   ├── rekomendasi_page.dart      # Form rekomendasi pemupukan berbasis AI
+│   ├── manual_page.dart           # Kontrol dosis manual
+│   ├── wifi_page.dart             # Konfigurasi WiFi device
+│   └── info_page.dart             # Informasi sistem & instruksi
+├── widgets/                       # Components UI reusabel (Cards, Charts, Gauges)
+└── theme/                         # Color Palette & Typography design system
+```
+
+---
+
+## ⚡ Cara Menjalankan Aplikasi
+
+### Requirements:
+- Flutter SDK `^3.11.1` atau lebih baru.
+- Linux, macOS, Windows, Android, atau iOS.
+
+### Langkah-langkah:
 ```bash
-# 1. Clone repository
-git clone <repository-url>
-cd alburdat_dashboard
-
-# 2. Install dependencies
+# 1. Install / update dependency
 flutter pub get
 
-# 3. Run (Web/Android/iOS/Desktop)
-flutter run -d chrome  # Web
-flutter run             # Android/iOS
+# 2. Jalankan di Linux Desktop (Arch/CachyOS/Ubuntu/Fedora):
+flutter run -d linux
 
-# 4. MQTT is already configured (broker.emqx.io)
-# App will auto-connect and wait for device
+# 3. Atau jalankan di Chrome Web Browser:
+flutter run -d chrome
+
+# 4. Atau jalankan di Android Device / Emulator:
+flutter run
 ```
-
-Detail setup → [QUICK_START.md](docs/QUICK_START.md) | [SETUP.md](docs/SETUP.md)
 
 ---
 
-## ✨ Fitur Utama
+## 📚 Dokumentasi Lanjutan
 
-- **📊 Monitoring Real-time**: Pantau status device (dosis, motor, statistik) secara langsung
-- **🧠 Sistem Rekomendasi**: Rekomendasi dosis otomatis berdasarkan jenis tanaman & umur tanaman (HST)
-- **⚙️ Kontrol Manual**: Atur dosis pupuk secara manual via slider atau input numerik
-- **📈 Statistik Terperinci**: Tracking penggunaan pupuk dengan chart & analytics
-- **🌐 Manajemen WiFi**: Reset konfigurasi WiFi device via aplikasi
-- **💻 Multi-platform**: Android, iOS, Web, Windows, macOS, Linux
-- **🔄 Real-time Sync**: MQTT communication untuk update status instant
-
-## 🏗️ Arsitektur Sistem
-
-```
-┌──────────────────────────────────┐
-│   Flutter Dashboard (Multi-OS)   │  ← Anda sedang di sini
-│  (Android, iOS, Web, Desktop)    │
-└──────────────────┬───────────────┘
-                   │ MQTT (Port 1883)
-┌──────────────────┴───────────────┐
-│       MQTT Broker/Server         │
-│ (broker.emqx.io, Mosquitto, dll) │
-└──────────────────┬───────────────┘
-                   │ WiFi
-┌──────────────────┴───────────────┐
-│      ESP32 Device (Firmware)     │  ← Hardware/Firmware terpisah
-│  - Motor DC controller           │
-│  - OLED display                  │
-│  - WiFi & MQTT client            │
-└──────────────────────────────────┘
-```
-
-**Tech Stack**:
-
-- **FrontEnd**: Flutter 3.11.1+ dengan Provider state management
-- **Communication**: MQTT + JSON over TCP/WebSocket
-- **Databases**: Device EEPROM (untuk statistik)
-- **Backend**: Tidak ada (P2P via MQTT broker)
-
-## 📁 Project Structure
-
-```
-lib/
-├── main.dart                      # App entry point
-├── models/
-│   ├── device_status.dart        # Device status model (dosis, motor, stats)
-│   ├── commodity.dart             # Jenis tanaman (Padi, Jagung, etc)
-│   └── rule.dart                  # Expert system rules (HST → dosis mapping)
-├── data/
-│   └── knowledge_base.dart        # Knowledge base für rekomendasi
-├── services/
-│   ├── mqtt_service.dart          # MQTT connectivity & commands
-│   └── expert_system_service.dart # Dosage recommendation logic
-├── screens/
-│   ├── home_screen.dart           # Home/dashboard
-│   ├── rekomendasi_page.dart      # Recommendation page
-│   ├── manual_page.dart           # Manual control
-│   ├── info_page.dart             # App info & settings
-│   ├── wifi_page.dart             # WiFi configuration
-│   └── ...
-├── widgets/                       # Reusable UI components
-├── theme/
-│   └── theme.dart                 # App colors, fonts, styles
-└── utils/                         # Helper functions (if any)
-```
-
-## 🔧 Dependencies
-
-| Package          | Version  | Purpose                      |
-| ---------------- | -------- | ---------------------------- |
-| **mqtt_client**  | ^10.11.9 | Real-time MQTT communication |
-| **provider**     | ^6.1.1   | State management             |
-| **fl_chart**     | ^1.1.1   | Statistics charts            |
-| **google_fonts** | ^8.0.2   | Typography                   |
-| **lottie**       | ^3.0.0   | Animations                   |
-| **flutter_svg**  | ^2.0.9   | SVG support                  |
-| **intl**         | 0.20.2   | Localization                 |
-| **video_player** | ^2.9.3   | Video playback               |
-
-Lihat [pubspec.yaml](pubspec.yaml) untuk dependencies lengkap.
-
-## 🤝 Kontribusi
-
-**Ingin berkontribusi?** Ikuti workflow ini:
-
-1. Fork repository
-2. Buat feature branch:
-   ```bash
-   git checkout -b feature/AmazingFeature
-   ```
-3. Commit perubahan dengan pesan jelas:
-   ```bash
-   git commit -m "Add amazing feature"
-   ```
-4. Push ke branch:
-   ```bash
-   git push origin feature/AmazingFeature
-   ```
-5. Buat Pull Request dengan deskripsi detail
-
-**Development Guidelines**:
-
-- Ikuti [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
-- Gunakan meaningful commit messages
-- Test sebelum submit PR
-- Update dokumentasi jika ada API changes
-
-## 📖 Dokumentasi Lengkap
-
-### Untuk Pengguna Akhir
-
-- **[USER_GUIDE.md](docs/USER_GUIDE.md)** — Panduan lengkap penggunaan sistem
-
-### Untuk Developer
-
-- **[QUICK_START.md](docs/QUICK_START.md)** — Setup & run dalam 15 menit
-- **[SETUP.md](docs/SETUP.md)** — Setup environment detail
-- **[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)** — Panduan development
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Desain sistem & patterns
-- **[API_REFERENCE.md](docs/API_REFERENCE.md)** — API documentation
-- **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — Problem solving
-
-## 🆘 Getting Help
-
-**Jika ada masalah:**
-
-1. **Check dokumentasi** → [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-2. **Run flutter doctor**:
-   ```bash
-   flutter doctor -v
-   ```
-3. **Check app logs**:
-   ```bash
-   flutter logs
-   ```
-4. **Create GitHub issue** dengan:
-   - Flutter version
-   - Device OS
-   - Error message & stacktrace
-   - Steps to reproduce
-
-## 📞 Resources
-
-- **Flutter Docs**: https://flutter.dev
-- **Dart Docs**: https://dart.dev
-- **MQTT Docs**: https://mqtt.org
-- **mqtt_client Package**: https://pub.dev/packages/mqtt_client
-- **Provider Pattern**: https://pub.dev/packages/provider
-
-## 📄 Lisensi
-
-Proyek ini dilisensikan di bawah [MIT License](LICENSE).
+- 📖 **[USER_GUIDE.md](docs/USER_GUIDE.md)** — Panduan penggunaan untuk petani/operator lapangan.
+- ⚡ **[QUICK_START.md](docs/QUICK_START.md)** — Quick start panduan setup developer.
+- 🏗️ **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Detail arsitektur MQTT & P2P payload.
+- 🔧 **[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)** — Guide modifikasi aturan sistem pakar & komoditas baru.
 
 ---
 
-## 🙏 Ucapan Terima Kasih
-
-Terima kasih kepada:
-
-- Tim pengembang **Flutter** & komunitas open source
-- **MQTT** broker providers (EMQX, HiveMQ, Mosquitto)
-- Semua kontributor yang telah membantu
-
----
-
-## 📊 Project Status
-
-| Component          | Status           | Version  |
-| ------------------ | ---------------- | -------- |
-| **Flutter App**    | ✅ Stable        | 1.0.1    |
-| **Documentation**  | ✅ Complete      | 2024     |
-| **ESP32 Firmware** | ⚠️ Separate repo | See docs |
-| **MQTT Protocol**  | ✅ Stable        | v3.1.1   |
-
----
-
-**⭐ Jika project ini bermanfaat, please star repository!**
-
-**Last Updated**: 2024  
-**Maintainer**: [Aamiin / Development Team]
-
----
-
-_Untuk developer yang melanjutkan project ini setelah saya tidak disini lagi: Silahkan baca [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) terlebih dahulu untuk memahami seluruh project structure dan development workflow. Dokumentasi sudah lengkap untuk memandu Anda. Sukses! 🚀_
+**Maintainer**: Development Team  
+**License**: MIT License

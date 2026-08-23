@@ -41,9 +41,9 @@ dependencies:
   flutter_svg: ^2.0.9
   lottie: ^3.0.0
   fl_chart: ^1.1.1
-  intl: 0.20.2
+  intl: ^0.20.3
 
-  splash_master: ^0.0.3
+  splash_master: ^1.0.0+1
   video_player: ^2.9.3
 
 dev_dependencies:
