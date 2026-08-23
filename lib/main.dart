@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'services/bluetooth_service.dart';
 import 'services/database_helper.dart';
 import 'services/mqtt_service.dart';
-import 'theme/theme.dart';
+import 'services/theme_provider.dart';
 import 'screens/main_navigation_screen.dart';
 
 void main() async {
@@ -18,6 +18,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider<ThemeProvider>(
+          create: (_) => ThemeProvider(),
+        ),
         ChangeNotifierProvider<DatabaseHelper>(
           create: (_) => DatabaseHelper.instance,
         ),
@@ -28,11 +31,17 @@ class MyApp extends StatelessWidget {
           create: (_) => MqttService(),
         ),
       ],
-      child: MaterialApp(
-        title: 'Smart Sprayer AI & IoT',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        home: const MainNavigationScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: 'Smart Sprayer AI & IoT',
+            debugShowCheckedModeBanner: false,
+            theme: themeProvider.darkThemeData,
+            darkTheme: themeProvider.darkThemeData,
+            themeMode: ThemeMode.dark,
+            home: const MainNavigationScreen(),
+          );
+        },
       ),
     );
   }

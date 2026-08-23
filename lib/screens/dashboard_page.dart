@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/database_helper.dart';
+import '../services/theme_provider.dart';
 import '../models/spray_schedule.dart';
 import '../theme/theme.dart';
 
@@ -34,9 +35,11 @@ class _DashboardPageState extends State<DashboardPage> {
     final btService = Provider.of<BluetoothService>(context);
     final mqttService = Provider.of<MqttService>(context);
     final dbHelper = Provider.of<DatabaseHelper>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
 
     final isBleConnected = btService.isConnected;
     final isMqttConnected = mqttService.isConnected && mqttService.isEspOnline;
+    final isDark = themeProvider.isDarkMode;
 
     // Fallback logic: Prefer BLE if connected, else MQTT
     final status = isBleConnected
@@ -46,7 +49,7 @@ class _DashboardPageState extends State<DashboardPage> {
             : btService.deviceStatus);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F6), // Soft off-white green tint
+      backgroundColor: isDark ? ThemeProvider.darkBgColor : const Color(0xFFF6F8F6),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(
@@ -57,27 +60,27 @@ class _DashboardPageState extends State<DashboardPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 1. HEADER (Profile & Interactive Connection Badge)
-              _buildHeader(context, isBleConnected, isMqttConnected, dbHelper, btService, mqttService),
+              _buildHeader(context, isBleConnected, isMqttConnected, dbHelper, btService, mqttService, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
-              // 2. SOLAR & BATTERY CARD (Restored to original Solar Battery Card design)
-              _buildSolarBatteryCard(context, status),
+              // 2. INTERACTIVE DATE STRIP & TIMELINE SCHEDULE (Moved to top above Solar Battery card)
+              _buildDateAndScheduleSection(context, dbHelper, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
-              // 3. PUMP CONTROL CARD (Interactive Control)
-              _buildPumpControlCard(context, btService, mqttService, dbHelper, status, isBleConnected, isMqttConnected),
+              // 3. SOLAR & BATTERY CARD (Sistem Daya Kebun)
+              _buildSolarBatteryCard(context, status, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
-              // 4. METRIC GRID CARDS (2x2 Grid)
-              _buildMetricGrid(context, status),
+              // 4. PUMP CONTROL CARD
+              _buildPumpControlCard(context, btService, mqttService, dbHelper, status, isBleConnected, isMqttConnected, isDark),
+              const SizedBox(height: AppTheme.spacingLG),
+
+              // 5. METRIC GRID CARDS (2x2 Grid)
+              _buildMetricGrid(context, status, isDark),
               const SizedBox(height: AppTheme.spacingXL),
 
-              // 5. STATISTIC BAR CHART (Matching Right Screen Chart)
-              _buildStatisticChartCard(context),
-              const SizedBox(height: AppTheme.spacingXL),
-
-              // 6. INTERACTIVE DATE STRIP & TIMELINE SCHEDULE
-              _buildDateAndScheduleSection(context, dbHelper),
+              // 6. STATISTIC BAR CHART
+              _buildStatisticChartCard(context, isDark),
             ],
           ),
         ),
@@ -93,13 +96,16 @@ class _DashboardPageState extends State<DashboardPage> {
     DatabaseHelper dbHelper,
     BluetoothService btService,
     MqttService mqttService,
+    bool isDark,
   ) {
+    final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+
     return Row(
       children: [
         CircleAvatar(
           radius: 22,
-          backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.15),
-          child: const Icon(Icons.eco, color: AppTheme.primaryColor, size: 26),
+          backgroundColor: primaryAccent.withValues(alpha: isDark ? 0.2 : 0.15),
+          child: Icon(Icons.eco, color: primaryAccent, size: 26),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -109,24 +115,26 @@ class _DashboardPageState extends State<DashboardPage> {
               Text(
                 'Selamat Pagi! 🌱',
                 style: TextStyle(
+                  fontFamily: 'Utendo',
                   fontSize: 12,
-                  color: Colors.grey.shade600,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              const Text(
+              Text(
                 'Smart Sprayer AI',
                 style: TextStyle(
+                  fontFamily: 'Utendo',
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
+                  color: isDark ? Colors.white : AppTheme.textDark,
                   letterSpacing: -0.5,
                 ),
               ),
             ],
           ),
         ),
-        // Interactive Badge
+        // Connection Badge
         GestureDetector(
           onTap: () {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -139,7 +147,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             );
           },
-          child: _buildConnectionBadge(isBle, isMqtt),
+          child: _buildConnectionBadge(isBle, isMqtt, isDark),
         ),
         const SizedBox(width: 8),
         IconButton(
@@ -160,33 +168,33 @@ class _DashboardPageState extends State<DashboardPage> {
           icon: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isDark ? ThemeProvider.darkCardColor : Colors.white,
               shape: BoxShape.circle,
-              boxShadow: AppTheme.shadowSM,
+              boxShadow: isDark ? [] : AppTheme.shadowSM,
             ),
-            child: const Icon(Icons.sync, size: 20, color: AppTheme.textDark),
+            child: Icon(Icons.sync, size: 20, color: isDark ? primaryAccent : AppTheme.textDark),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildConnectionBadge(bool isBle, bool isMqtt) {
+  Widget _buildConnectionBadge(bool isBle, bool isMqtt, bool isDark) {
     Color bg;
     Color fg;
     String text;
 
     if (isBle) {
-      bg = const Color(0xFFDCFCE7);
-      fg = const Color(0xFF15803D);
+      bg = isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDCFCE7);
+      fg = isDark ? ThemeProvider.blackColor : const Color(0xFF15803D);
       text = 'BLE Active';
     } else if (isMqtt) {
-      bg = const Color(0xFFDBEAFE);
-      fg = const Color(0xFF1D4ED8);
+      bg = isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDBEAFE);
+      fg = isDark ? ThemeProvider.blackColor : const Color(0xFF1D4ED8);
       text = 'MQTT Online';
     } else {
-      bg = const Color(0xFFFEE2E2);
-      fg = const Color(0xFFB91C1C);
+      bg = Colors.red.withValues(alpha: 0.2);
+      fg = Colors.red.shade400;
       text = 'Offline';
     }
 
@@ -207,25 +215,28 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(width: 6),
           Text(
             text,
-            style: TextStyle(color: fg, fontWeight: FontWeight.bold, fontSize: 11),
+            style: TextStyle(fontFamily: 'Utendo', color: fg, fontWeight: FontWeight.bold, fontSize: 11),
           ),
         ],
       ),
     );
   }
 
-  // --- 2. RESTORED SOLAR & BATTERY CARD ---
-  Widget _buildSolarBatteryCard(BuildContext context, dynamic status) {
+  // --- 2. SOLAR & BATTERY CARD ---
+  Widget _buildSolarBatteryCard(BuildContext context, dynamic status, bool isDark) {
     final battery = status.batteryPercentage;
     final isSolar = status.isSolarCharging;
     final voltage = status.batteryVoltage;
+    final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
+    final titleColor = isDark ? Colors.white : AppTheme.textDark;
+    final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: AppTheme.shadowSM,
+        boxShadow: isDark ? [] : AppTheme.shadowSM,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,26 +249,26 @@ class _DashboardPageState extends State<DashboardPage> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: isSolar ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7),
+                      color: isDark ? primaryAccent : (isSolar ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7)),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
                       isSolar ? Icons.solar_power : Icons.battery_charging_full,
-                      color: isSolar ? const Color(0xFFD97706) : AppTheme.primaryColor,
+                      color: isDark ? ThemeProvider.blackColor : (isSolar ? const Color(0xFFD97706) : AppTheme.primaryColor),
                       size: 24,
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Sistem Daya Kebun',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
                       ),
                       Text(
                         'Baterai 18650 & Panel Surya',
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                        style: TextStyle(fontFamily: 'Utendo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey),
                       ),
                     ],
                   ),
@@ -266,13 +277,14 @@ class _DashboardPageState extends State<DashboardPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isSolar ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7),
+                  color: isDark ? primaryAccent : (isSolar ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7)),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   isSolar ? '⚡ Solar Charging' : '🔋 Battery Only',
                   style: TextStyle(
-                    color: isSolar ? const Color(0xFFB45309) : const Color(0xFF15803D),
+                    fontFamily: 'Utendo',
+                    color: isDark ? ThemeProvider.blackColor : (isSolar ? const Color(0xFFB45309) : const Color(0xFF15803D)),
                     fontWeight: FontWeight.bold,
                     fontSize: 11,
                   ),
@@ -291,10 +303,10 @@ class _DashboardPageState extends State<DashboardPage> {
                   child: LinearProgressIndicator(
                     value: battery / 100.0,
                     minHeight: 14,
-                    backgroundColor: const Color(0xFFF3F4F6),
+                    backgroundColor: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
                     valueColor: AlwaysStoppedAnimation<Color>(
                       battery > 50
-                          ? AppTheme.primaryColor
+                          ? primaryAccent
                           : (battery > 20 ? AppTheme.accentYellow : AppTheme.errorColor),
                     ),
                   ),
@@ -303,10 +315,11 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(width: 14),
               Text(
                 '$battery%',
-                style: const TextStyle(
+                style: TextStyle(
+                  fontFamily: 'Utendo',
                   fontWeight: FontWeight.w800,
                   fontSize: 22,
-                  color: AppTheme.textDark,
+                  color: titleColor,
                 ),
               ),
             ],
@@ -314,7 +327,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 8),
           Text(
             'Tegangan Baterai: ${voltage.toStringAsFixed(1)}V (Regulator 3.3V System OK)',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
           ),
         ],
       ),
@@ -330,16 +343,19 @@ class _DashboardPageState extends State<DashboardPage> {
     dynamic status,
     bool isBle,
     bool isMqtt,
+    bool isDark,
   ) {
     final isRunning = status.isPumpRunning;
-    final remainingSec = status.activeDurationSeconds;
+    final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
+    final titleColor = isDark ? Colors.white : AppTheme.textDark;
+    final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: AppTheme.shadowSM,
+        boxShadow: isDark ? [] : AppTheme.shadowSM,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,12 +368,12 @@ class _DashboardPageState extends State<DashboardPage> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: isRunning ? const Color(0xFFDCFCE7) : const Color(0xFFF3F4F6),
+                      color: isDark ? primaryAccent : (isRunning ? const Color(0xFFDCFCE7) : const Color(0xFFF3F4F6)),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
                       Icons.water_drop,
-                      color: isRunning ? AppTheme.primaryColor : Colors.grey.shade600,
+                      color: isDark ? ThemeProvider.blackColor : (isRunning ? AppTheme.primaryColor : Colors.grey.shade600),
                       size: 22,
                     ),
                   ),
@@ -365,15 +381,16 @@ class _DashboardPageState extends State<DashboardPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Pompa Misting DC',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
                       ),
                       Text(
                         isRunning ? 'Status: Menyemprot' : 'Status: Standby',
                         style: TextStyle(
+                          fontFamily: 'Utendo',
                           fontSize: 12,
-                          color: isRunning ? AppTheme.primaryColor : Colors.grey,
+                          color: isRunning ? primaryAccent : (isDark ? Colors.grey.shade400 : Colors.grey),
                         ),
                       ),
                     ],
@@ -383,120 +400,87 @@ class _DashboardPageState extends State<DashboardPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
+                  color: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   '~5 ml/detik',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                  style: TextStyle(fontFamily: 'Utendo', fontSize: 11, fontWeight: FontWeight.bold, color: isDark ? Colors.grey.shade300 : Colors.grey.shade700),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-
-          if (isRunning) ...[
-            Center(
-              child: Column(
-                children: [
-                  const CircularProgressIndicator(color: AppTheme.primaryColor),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Menyemprot... Sisa $remainingSec Detik',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        if (isBle) {
-                          btService.stopSpraying();
-                        } else if (isMqtt) {
-                          mqttService.stopSpraying();
-                        }
-                      },
-                      icon: const Icon(Icons.stop),
-                      label: const Text('HENTIKAN POMPA'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.errorColor,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                    ),
-                  ),
-                ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Durasi Semprot',
+                style: TextStyle(fontFamily: 'Utendo', fontSize: 13, color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
               ),
-            ),
-          ] else ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Durasi Semprot', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                Text(
-                  '${_selectedDuration.toInt()} Detik (${(_selectedDuration * 5).toInt()} ml)',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.primaryColor),
+              Text(
+                '${_selectedDuration.toInt()} Detik (${(_selectedDuration * 5).toInt()} ml)',
+                style: TextStyle(
+                  fontFamily: 'Utendo',
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: primaryAccent,
                 ),
-              ],
-            ),
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                activeTrackColor: AppTheme.primaryColor,
-                inactiveTrackColor: const Color(0xFFE5E7EB),
-                thumbColor: AppTheme.primaryColor,
-                trackHeight: 6,
               ),
-              child: Slider(
-                value: _selectedDuration,
-                min: 5.0,
-                max: 120.0,
-                divisions: 23,
-                onChanged: (val) => setState(() => _selectedDuration = val),
-              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: primaryAccent,
+              inactiveTrackColor: isDark ? const Color(0xFF2C2D30) : const Color(0xFFE5E7EB),
+              thumbColor: primaryAccent,
+              trackHeight: 6,
             ),
-            const SizedBox(height: 4),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: (isBle || isMqtt)
-                    ? () {
-                        if (isBle) {
-                          btService.startSpraying(
-                            durationSeconds: _selectedDuration.toInt(),
-                            dbHelper: dbHelper,
-                            mode: 'Manual App',
-                          );
-                        } else if (isMqtt) {
-                          mqttService.startSpraying(durationSeconds: _selectedDuration.toInt());
-                        }
+            child: Slider(
+              value: _selectedDuration,
+              min: 5.0,
+              max: 120.0,
+              divisions: 23,
+              onChanged: (val) => setState(() => _selectedDuration = val),
+            ),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: (isBle || isMqtt)
+                  ? () {
+                      if (isBle) {
+                        btService.startSpraying(
+                          durationSeconds: _selectedDuration.toInt(),
+                          dbHelper: dbHelper,
+                          mode: 'Manual App',
+                        );
+                      } else if (isMqtt) {
+                        mqttService.startSpraying(durationSeconds: _selectedDuration.toInt());
                       }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: Text(
-                  (isBle || isMqtt) ? 'SEMPROT SEKARANG' : 'SAMBUNGKAN KONEKSI DULU',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
+                    }
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryAccent,
+                foregroundColor: isDark ? ThemeProvider.blackColor : Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text(
+                (isBle || isMqtt) ? 'SEMPROT SEKARANG' : 'SAMBUNGKAN KONEKSI DULU',
+                style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? ThemeProvider.blackColor : Colors.white),
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
   }
 
-  // --- 4. METRIC GRID (2x2 Grid) ---
-  Widget _buildMetricGrid(BuildContext context, dynamic status) {
+  // --- 4. METRIC GRID ---
+  Widget _buildMetricGrid(BuildContext context, dynamic status, bool isDark) {
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -507,35 +491,39 @@ class _DashboardPageState extends State<DashboardPage> {
       children: [
         _buildMetricItem(
           icon: Icons.opacity,
-          iconColor: const Color(0xFF0284C7),
-          iconBg: const Color(0xFFE0F2FE),
+          iconColor: isDark ? ThemeProvider.blackColor : const Color(0xFF0284C7),
+          iconBg: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFE0F2FE),
           title: 'Total Volume',
           value: '${status.totalVolumeTodayMl.toInt()} ml',
           subtitle: 'Hari ini',
+          isDark: isDark,
         ),
         _buildMetricItem(
           icon: Icons.repeat,
-          iconColor: const Color(0xFF16A34A),
-          iconBg: const Color(0xFFDCFCE7),
+          iconColor: isDark ? ThemeProvider.blackColor : const Color(0xFF16A34A),
+          iconBg: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDCFCE7),
           title: 'Total Sesi',
           value: '${status.totalSesiToday} Sesi',
           subtitle: 'Penyemprotan',
+          isDark: isDark,
         ),
         _buildMetricItem(
           icon: status.isSolarCharging ? Icons.solar_power : Icons.battery_charging_full,
-          iconColor: const Color(0xFFD97706),
-          iconBg: const Color(0xFFFEF3C7),
+          iconColor: isDark ? ThemeProvider.blackColor : const Color(0xFFD97706),
+          iconBg: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFFEF3C7),
           title: 'Baterai 18650',
           value: '${status.batteryPercentage}%',
           subtitle: '${status.batteryVoltage.toStringAsFixed(1)}V • ${status.isSolarCharging ? "Solar" : "Batt"}',
+          isDark: isDark,
         ),
         _buildMetricItem(
           icon: Icons.speed,
-          iconColor: const Color(0xFF9333EA),
-          iconBg: const Color(0xFFF3E8FF),
+          iconColor: isDark ? ThemeProvider.blackColor : const Color(0xFF9333EA),
+          iconBg: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFF3E8FF),
           title: 'Debit Pompa',
           value: '5.0 ml/s',
           subtitle: 'Kalibrasi Presisi',
+          isDark: isDark,
         ),
       ],
     );
@@ -548,13 +536,14 @@ class _DashboardPageState extends State<DashboardPage> {
     required String title,
     required String value,
     required String subtitle,
+    required bool isDark,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? ThemeProvider.darkCardColor : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: AppTheme.shadowSM,
+        boxShadow: isDark ? [] : AppTheme.shadowSM,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -575,8 +564,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Text(
                   title,
                   style: TextStyle(
+                    fontFamily: 'Utendo',
                     fontSize: 12,
-                    color: Colors.grey.shade600,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                     fontWeight: FontWeight.w500,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -589,15 +579,16 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
+                  fontFamily: 'Utendo',
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.textDark,
+                  color: isDark ? Colors.white : AppTheme.textDark,
                 ),
               ),
               Text(
                 subtitle,
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                style: TextStyle(fontFamily: 'Utendo', fontSize: 10, color: isDark ? Colors.grey.shade500 : Colors.grey.shade500),
               ),
             ],
           ),
@@ -607,13 +598,16 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // --- 5. STATISTIC BAR CHART ---
-  Widget _buildStatisticChartCard(BuildContext context) {
+  Widget _buildStatisticChartCard(BuildContext context, bool isDark) {
+    final titleColor = isDark ? Colors.white : AppTheme.textDark;
+    final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: AppTheme.shadowSM,
+        color: isDark ? ThemeProvider.darkCardColor : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: isDark ? [] : AppTheme.shadowSM,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -621,35 +615,58 @@ class _DashboardPageState extends State<DashboardPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Statistik',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textDark,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Statistik Volume',
+                    style: TextStyle(
+                      fontFamily: 'Utendo',
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Minggu Ini • Total 1.250 ml',
+                    style: TextStyle(
+                      fontFamily: 'Utendo',
+                      fontSize: 12,
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.flag_outlined,
+                      size: 14,
+                      color: primaryAccent,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Target 1.500 ml',
+                      style: TextStyle(
+                        fontFamily: 'Utendo',
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: primaryAccent,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Icon(Icons.more_horiz, color: Colors.grey.shade400),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Text(
-                'Volume ',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const Text(
-                '1250 ml ',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-              ),
-              Text(
-                'Target: 1500 ml',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
           SizedBox(
             height: 180,
@@ -657,7 +674,27 @@ class _DashboardPageState extends State<DashboardPage> {
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
                 maxY: 120,
-                barTouchData: BarTouchData(enabled: false),
+                barTouchData: BarTouchData(
+                  enabled: true,
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipColor: (group) => isDark ? const Color(0xFF2C2D30) : Colors.white,
+                    tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+                      final percentages = [44, 34, 110, 47, 32, 79, 24];
+                      final vols = [440, 340, 1100, 470, 320, 790, 240];
+                      return BarTooltipItem(
+                        '${days[groupIndex]}\n${vols[groupIndex]} ml (${percentages[groupIndex]}%)',
+                        TextStyle(
+                          fontFamily: 'Utendo',
+                          fontWeight: FontWeight.bold,
+                          color: primaryAccent,
+                          fontSize: 11,
+                        ),
+                      );
+                    },
+                  ),
+                ),
                 titlesData: FlTitlesData(
                   show: true,
                   topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -667,13 +704,16 @@ class _DashboardPageState extends State<DashboardPage> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (val, meta) {
-                        const style = TextStyle(
-                          color: Colors.grey,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
+                        final idx = val.toInt();
+                        final isWed = idx == 2;
+                        final style = TextStyle(
+                          fontFamily: 'Utendo',
+                          color: isWed ? primaryAccent : (isDark ? Colors.grey.shade400 : Colors.grey),
+                          fontWeight: isWed ? FontWeight.bold : FontWeight.w500,
+                          fontSize: 12,
                         );
                         String text;
-                        switch (val.toInt()) {
+                        switch (idx) {
                           case 0: text = 'Mon'; break;
                           case 1: text = 'Tue'; break;
                           case 2: text = 'Wed'; break;
@@ -694,13 +734,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 gridData: const FlGridData(show: false),
                 borderData: FlBorderData(show: false),
                 barGroups: [
-                  _makeBarGroup(0, 44, "44%", isHighlighted: false),
-                  _makeBarGroup(1, 34, "34%", isHighlighted: false),
-                  _makeBarGroup(2, 110, "110%", isHighlighted: true),
-                  _makeBarGroup(3, 47, "47%", isHighlighted: false),
-                  _makeBarGroup(4, 32, "32%", isHighlighted: false),
-                  _makeBarGroup(5, 79, "79%", isHighlighted: false),
-                  _makeBarGroup(6, 24, "24%", isHighlighted: false),
+                  _makeBarGroup(0, 44, isHighlighted: false, isDark: isDark),
+                  _makeBarGroup(1, 34, isHighlighted: false, isDark: isDark),
+                  _makeBarGroup(2, 110, isHighlighted: true, isDark: isDark),
+                  _makeBarGroup(3, 47, isHighlighted: false, isDark: isDark),
+                  _makeBarGroup(4, 32, isHighlighted: false, isDark: isDark),
+                  _makeBarGroup(5, 79, isHighlighted: false, isDark: isDark),
+                  _makeBarGroup(6, 24, isHighlighted: false, isDark: isDark),
                 ],
               ),
             ),
@@ -710,20 +750,22 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  BarChartGroupData _makeBarGroup(int x, double y, String label, {required bool isHighlighted}) {
+  BarChartGroupData _makeBarGroup(int x, double y, {required bool isHighlighted, required bool isDark}) {
+    final activeAccent = isDark ? ThemeProvider.greenAccentColor : const Color(0xFF10B981);
+    final inactiveRod = isDark ? const Color(0xFF2C2D30) : const Color(0xFFDCFCE7);
+
     return BarChartGroupData(
       x: x,
-      showingTooltipIndicators: [0],
       barRods: [
         BarChartRodData(
           toY: y,
-          color: isHighlighted ? const Color(0xFF10B981) : const Color(0xFFDCFCE7),
+          color: isHighlighted ? activeAccent : inactiveRod,
           width: 18,
           borderRadius: BorderRadius.circular(10),
           backDrawRodData: BackgroundBarChartRodData(
             show: true,
             toY: 120,
-            color: const Color(0xFFF3F4F6),
+            color: isDark ? const Color(0xFF161616) : const Color(0xFFF3F4F6),
           ),
         ),
       ],
@@ -731,26 +773,27 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // --- 6. INTERACTIVE DATE STRIP & TIMELINE SCHEDULE ---
-  Widget _buildDateAndScheduleSection(BuildContext context, DatabaseHelper dbHelper) {
+  Widget _buildDateAndScheduleSection(BuildContext context, DatabaseHelper dbHelper, bool isDark) {
     final monthNames = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
     final monthText = '${monthNames[_currentMonth.month - 1]} ${_currentMonth.year}';
+    final titleColor = isDark ? Colors.white : AppTheme.textDark;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Date Selector Header with Interactive Arrows
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               monthText,
-              style: const TextStyle(
+              style: TextStyle(
+                fontFamily: 'Utendo',
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: AppTheme.textDark,
+                color: titleColor,
               ),
             ),
             Row(
@@ -761,7 +804,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
                     });
                   },
-                  child: _buildCircleArrow(Icons.chevron_left),
+                  child: _buildCircleArrow(Icons.chevron_left, isDark),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
@@ -770,7 +813,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
                     });
                   },
-                  child: _buildCircleArrow(Icons.chevron_right),
+                  child: _buildCircleArrow(Icons.chevron_right, isDark),
                 ),
               ],
             ),
@@ -778,34 +821,33 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 14),
 
-        // Fully Interactive Horizontal Date Strip
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(_weekDays.length, (index) {
             final item = _weekDays[index];
             final isSelected = _selectedDayIndex == index;
-            return _buildDateItem(item['day']!, item['date']!, index, isSelected: isSelected);
+            return _buildDateItem(item['day']!, item['date']!, index, isSelected: isSelected, isDark: isDark);
           }),
         ),
         const SizedBox(height: 20),
 
-        // Schedule Timeline List for Selected Day
         FutureBuilder<List<SpraySchedule>>(
           future: dbHelper.getAllSchedules(),
           builder: (context, snapshot) {
             final schedules = snapshot.data ?? [];
+            final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
 
             if (schedules.isEmpty) {
               return Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Center(
+                child: Center(
                   child: Text(
                     'Belum ada jadwal otomatis untuk hari ini.',
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                    style: TextStyle(fontFamily: 'Utendo', color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13),
                   ),
                 ),
               );
@@ -821,25 +863,25 @@ class _DashboardPageState extends State<DashboardPage> {
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: AppTheme.shadowSM,
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: isDark ? [] : AppTheme.shadowSM,
                   ),
                   child: Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: sched.isActive
-                              ? const Color(0xFFFEF3C7)
-                              : const Color(0xFFF3F4F6),
-                          borderRadius: BorderRadius.circular(14),
+                          color: isDark
+                              ? (sched.isActive ? ThemeProvider.greenAccentColor : const Color(0xFF2C2D30))
+                              : (sched.isActive ? const Color(0xFFFEF3C7) : const Color(0xFFF3F4F6)),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
                           Icons.alarm,
-                          color: sched.isActive
-                              ? const Color(0xFFD97706)
-                              : Colors.grey,
+                          color: isDark
+                              ? (sched.isActive ? ThemeProvider.blackColor : Colors.grey)
+                              : (sched.isActive ? const Color(0xFFD97706) : Colors.grey),
                           size: 20,
                         ),
                       ),
@@ -850,21 +892,24 @@ class _DashboardPageState extends State<DashboardPage> {
                           children: [
                             Text(
                               sched.title,
-                              style: const TextStyle(
+                              style: TextStyle(
+                                fontFamily: 'Utendo',
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
+                                color: isDark ? Colors.white : AppTheme.textDark,
                               ),
                             ),
                             Text(
                               '${sched.timeFormatted} • Durasi ${sched.durationSeconds} Detik',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                              style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
                             ),
                           ],
                         ),
                       ),
                       Switch(
                         value: sched.isActive,
-                        activeColor: AppTheme.primaryColor,
+                        activeTrackColor: isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor,
+                        activeThumbColor: isDark ? ThemeProvider.blackColor : null,
                         onChanged: (val) async {
                           final updated = sched.copyWith(isActive: val);
                           await dbHelper.updateSchedule(updated);
@@ -882,20 +927,24 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildCircleArrow(IconData icon) {
+  Widget _buildCircleArrow(IconData icon, bool isDark) {
     return Container(
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? ThemeProvider.darkCardColor : Colors.white,
         shape: BoxShape.circle,
-        boxShadow: AppTheme.shadowSM,
+        boxShadow: isDark ? [] : AppTheme.shadowSM,
       ),
-      child: Icon(icon, size: 18, color: AppTheme.textDark),
+      child: Icon(icon, size: 18, color: isDark ? Colors.white : AppTheme.textDark),
     );
   }
 
-  Widget _buildDateItem(String dayLetter, String dateNum, int index, {required bool isSelected}) {
+  Widget _buildDateItem(String dayLetter, String dateNum, int index, {required bool isSelected, required bool isDark}) {
+    final activeBg = isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDCFCE7);
+    final activeBorder = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+    final activeText = isDark ? ThemeProvider.blackColor : const Color(0xFF14532D);
+
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -904,23 +953,24 @@ class _DashboardPageState extends State<DashboardPage> {
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFDCFCE7) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          color: isSelected ? activeBg : (isDark ? ThemeProvider.darkCardColor : Colors.white),
+          borderRadius: BorderRadius.circular(10), // Squared rectangular date chips
           border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+            color: isSelected ? activeBorder : Colors.transparent,
             width: 1.5,
           ),
-          boxShadow: isSelected ? [] : AppTheme.shadowSM,
+          boxShadow: (isSelected || isDark) ? [] : AppTheme.shadowSM,
         ),
         child: Column(
           children: [
             Text(
               dayLetter,
               style: TextStyle(
+                fontFamily: 'Utendo',
                 fontSize: 11,
-                color: isSelected ? AppTheme.primaryColor : Colors.grey.shade500,
+                color: isSelected ? activeText : Colors.grey.shade500,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -928,9 +978,10 @@ class _DashboardPageState extends State<DashboardPage> {
             Text(
               dateNum,
               style: TextStyle(
+                fontFamily: 'Utendo',
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
-                color: isSelected ? const Color(0xFF14532D) : AppTheme.textDark,
+                color: isSelected ? activeText : (isDark ? Colors.white : AppTheme.textDark),
               ),
             ),
           ],
