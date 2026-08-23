@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:alburdat_dashboard/screens/dashboard_page.dart';
-import 'package:alburdat_dashboard/screens/rekomendasi_page.dart';
-import 'package:alburdat_dashboard/screens/manual_page.dart';
-import 'package:alburdat_dashboard/screens/wifi_page.dart';
-import 'package:alburdat_dashboard/screens/info_page.dart';
-import 'package:alburdat_dashboard/theme/theme.dart';
+import '../theme/theme.dart';
+import 'dashboard_page.dart';
+import 'bluetooth_page.dart';
+import 'schedule_page.dart';
+import 'history_page.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -14,56 +13,69 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _selectedIndex = 0;
+  int _currentIndex = 0;
 
-  static const List<Widget> _pages = <Widget>[
+  final List<Widget> _pages = const [
     DashboardPage(),
-    RekomendasiPage(),
-    ManualPage(),
-    WifiPage(),
-    InfoPage(),
+    BluetoothPage(),
+    SchedulePage(),
+    HistoryPage(),
   ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_rounded),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.lightbulb_rounded),
-            label: 'Rekomendasi',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.handshake_rounded),
-            label: 'Manual',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.wifi_rounded),
-            label: 'WiFi',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.info_rounded),
-            label: 'Info',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: AppTheme.primaryBlue,
-        unselectedItemColor: AppTheme.textGrey,
-        onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppTheme.surfaceLight,
-        elevation: 8,
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: AppTheme.surfaceLight,
+          selectedItemColor: AppTheme.primaryColor,
+          unselectedItemColor: AppTheme.textGrey,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
+          elevation: 0,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard_outlined),
+              activeIcon: Icon(Icons.dashboard),
+              label: 'Dashboard',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.memory_outlined),
+              activeIcon: Icon(Icons.memory),
+              label: 'Device',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.alarm_outlined),
+              activeIcon: Icon(Icons.alarm),
+              label: 'Jadwal',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart_outlined),
+              activeIcon: Icon(Icons.bar_chart),
+              label: 'Riwayat',
+            ),
+          ],
+        ),
       ),
     );
   }

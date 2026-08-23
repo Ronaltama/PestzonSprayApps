@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:alburdat_dashboard/services/mqtt_service.dart';
-import 'package:alburdat_dashboard/theme/theme.dart';
-import 'package:alburdat_dashboard/screens/home_screen.dart';
+import 'services/bluetooth_service.dart';
+import 'services/database_helper.dart';
+import 'services/mqtt_service.dart';
+import 'theme/theme.dart';
+import 'screens/main_navigation_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -15,12 +18,21 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => MqttService()..connect()),
+        ChangeNotifierProvider<DatabaseHelper>(
+          create: (_) => DatabaseHelper.instance,
+        ),
+        ChangeNotifierProvider<BluetoothService>(
+          create: (_) => BluetoothService(),
+        ),
+        ChangeNotifierProvider<MqttService>(
+          create: (_) => MqttService(),
+        ),
       ],
       child: MaterialApp(
-        title: 'FERTICORE AI Dashboard',
+        title: 'Smart Sprayer AI & IoT',
+        debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
-        home: const HomeScreen(),
+        home: const MainNavigationScreen(),
       ),
     );
   }
