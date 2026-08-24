@@ -347,10 +347,10 @@ class _HistoryPageState extends State<HistoryPage> {
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
         decoration: BoxDecoration(
           color: isSelected ? activeBg : (isDark ? ThemeProvider.darkCardColor : Colors.white),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected ? activeBorder : Colors.transparent,
             width: 1.5,
@@ -363,12 +363,12 @@ class _HistoryPageState extends State<HistoryPage> {
               dayLetter,
               style: TextStyle(
                 fontFamily: 'Utendo',
-                fontSize: 11,
+                fontSize: 10,
                 color: isSelected ? activeText : Colors.grey.shade500,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               dateNum,
               style: TextStyle(
