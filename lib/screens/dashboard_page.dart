@@ -63,13 +63,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
               // 4. PUMP CONTROL CARD
               _buildPumpControlCard(context, btService, mqttService, dbHelper, status, isBleConnected, isMqttConnected, isDark),
-              const SizedBox(height: AppTheme.spacingLG),
-
-              // 5. METRIC GRID CARDS (2x2 Grid)
-              _buildMetricGrid(context, status, isDark),
               const SizedBox(height: AppTheme.spacingXL),
 
-              // 6. STATISTIC BAR CHART
+              // 5. STATISTIC BAR CHART
               _buildStatisticChartCard(context, isDark),
               const SizedBox(height: 80),
             ],
@@ -586,124 +582,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- 4. METRIC GRID ---
-  Widget _buildMetricGrid(BuildContext context, dynamic status, bool isDark) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 1.4,
-      children: [
-        _buildMetricItem(
-          icon: Icons.opacity,
-          iconColor: isDark ? ThemeProvider.blackColor : const Color(0xFF0284C7),
-          iconBg: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFE0F2FE),
-          title: 'Total Volume',
-          value: '${status.totalVolumeTodayMl.toInt()} ml',
-          subtitle: 'Hari ini',
-          isDark: isDark,
-        ),
-        _buildMetricItem(
-          icon: Icons.repeat,
-          iconColor: isDark ? ThemeProvider.blackColor : const Color(0xFF16A34A),
-          iconBg: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDCFCE7),
-          title: 'Total Sesi',
-          value: '${status.totalSesiToday} Sesi',
-          subtitle: 'Penyemprotan',
-          isDark: isDark,
-        ),
-        _buildMetricItem(
-          icon: status.isSolarCharging ? Icons.solar_power : Icons.battery_charging_full,
-          iconColor: isDark ? ThemeProvider.blackColor : const Color(0xFFD97706),
-          iconBg: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFFEF3C7),
-          title: 'Baterai 18650',
-          value: '${status.batteryPercentage}%',
-          subtitle: '${status.batteryVoltage.toStringAsFixed(1)}V • ${status.isSolarCharging ? "Solar" : "Batt"}',
-          isDark: isDark,
-        ),
-        _buildMetricItem(
-          icon: Icons.speed,
-          iconColor: isDark ? ThemeProvider.blackColor : const Color(0xFF9333EA),
-          iconBg: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFF3E8FF),
-          title: 'Debit Pompa',
-          value: '5.0 ml/s',
-          subtitle: 'Kalibrasi Presisi',
-          isDark: isDark,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMetricItem({
-    required IconData icon,
-    required Color iconColor,
-    required Color iconBg,
-    required String title,
-    required String value,
-    required String subtitle,
-    required bool isDark,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? ThemeProvider.darkCardColor : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: isDark ? [] : AppTheme.shadowSM,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 20),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontFamily: 'Utendo',
-                    fontSize: 12,
-                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontFamily: 'Utendo',
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? Colors.white : AppTheme.textDark,
-                ),
-              ),
-              Text(
-                subtitle,
-                style: TextStyle(fontFamily: 'Utendo', fontSize: 10, color: isDark ? Colors.grey.shade500 : Colors.grey.shade500),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   // --- 5. STATISTIC BAR CHART ---
   Widget _buildStatisticChartCard(BuildContext context, bool isDark) {
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
@@ -821,13 +699,13 @@ class _DashboardPageState extends State<DashboardPage> {
                         );
                         String text;
                         switch (idx) {
-                          case 0: text = 'Mon'; break;
-                          case 1: text = 'Tue'; break;
-                          case 2: text = 'Wed'; break;
-                          case 3: text = 'Thu'; break;
-                          case 4: text = 'Fri'; break;
-                          case 5: text = 'Sat'; break;
-                          case 6: text = 'Sun'; break;
+                          case 0: text = 'Sen'; break;
+                          case 1: text = 'Sel'; break;
+                          case 2: text = 'Rab'; break;
+                          case 3: text = 'Kam'; break;
+                          case 4: text = 'Jum'; break;
+                          case 5: text = 'Sab'; break;
+                          case 6: text = 'Min'; break;
                           default: text = ''; break;
                         }
                         return Padding(

@@ -19,12 +19,12 @@ class _HistoryPageState extends State<HistoryPage> {
   DateTime _currentMonth = DateTime(2025, 8, 1); // August 2025
 
   final List<Map<String, String>> _weekDays = [
-    {'day': 'S', 'date': '07', 'fullDay': 'Minggu', 'fullDate': '07/08/2025'},
-    {'day': 'M', 'date': '08', 'fullDay': 'Senin', 'fullDate': '08/08/2025'},
-    {'day': 'T', 'date': '09', 'fullDay': 'Selasa', 'fullDate': '09/08/2025'},
-    {'day': 'W', 'date': '10', 'fullDay': 'Rabu', 'fullDate': '10/08/2025'},
-    {'day': 'T', 'date': '11', 'fullDay': 'Kamis', 'fullDate': '11/08/2025'},
-    {'day': 'F', 'date': '12', 'fullDay': 'Jumat', 'fullDate': '12/08/2025'},
+    {'day': 'M', 'date': '07', 'fullDay': 'Minggu', 'fullDate': '07/08/2025'},
+    {'day': 'S', 'date': '08', 'fullDay': 'Senin', 'fullDate': '08/08/2025'},
+    {'day': 'S', 'date': '09', 'fullDay': 'Selasa', 'fullDate': '09/08/2025'},
+    {'day': 'R', 'date': '10', 'fullDay': 'Rabu', 'fullDate': '10/08/2025'},
+    {'day': 'K', 'date': '11', 'fullDay': 'Kamis', 'fullDate': '11/08/2025'},
+    {'day': 'J', 'date': '12', 'fullDay': 'Jumat', 'fullDate': '12/08/2025'},
     {'day': 'S', 'date': '13', 'fullDay': 'Sabtu', 'fullDate': '13/08/2025'},
   ];
 
