@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/database_helper.dart';
 import '../services/theme_provider.dart';
-import '../models/spray_schedule.dart';
 import '../theme/theme.dart';
+import 'day_detail_overview_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -17,18 +19,6 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   double _selectedDuration = 30.0;
-  int _selectedDayIndex = 3; // Default to Wednesday 10
-  DateTime _currentMonth = DateTime(2025, 8, 1); // August 2025
-
-  final List<Map<String, String>> _weekDays = [
-    {'day': 'S', 'date': '07'},
-    {'day': 'M', 'date': '08'},
-    {'day': 'T', 'date': '09'},
-    {'day': 'W', 'date': '10'},
-    {'day': 'T', 'date': '11'},
-    {'day': 'F', 'date': '12'},
-    {'day': 'S', 'date': '13'},
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -63,8 +53,8 @@ class _DashboardPageState extends State<DashboardPage> {
               _buildHeader(context, isBleConnected, isMqttConnected, dbHelper, btService, mqttService, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
-              // 2. INTERACTIVE DATE STRIP & TIMELINE SCHEDULE (Moved to top above Solar Battery card)
-              _buildDateAndScheduleSection(context, dbHelper, isDark),
+              // 2. HERO DAY CARD with Top-Right Navigation Arrow & Smooth Auto-Scrolling Ticker
+              _buildHeroDayCard(context, status, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
               // 3. SOLAR & BATTERY CARD (Sistem Daya Kebun)
@@ -81,9 +71,126 @@ class _DashboardPageState extends State<DashboardPage> {
 
               // 6. STATISTIC BAR CHART
               _buildStatisticChartCard(context, isDark),
+              const SizedBox(height: 80),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // --- HERO DAY SUMMARY CARD (With Top-Right Arrow & Auto-Slide Animation) ---
+  Widget _buildHeroDayCard(BuildContext context, dynamic status, bool isDark) {
+    const cardColor = ThemeProvider.greenAccentColor; // #D5FF40 Electric Neon Green
+    const textColor = ThemeProvider.blackColor;      // #0F0F0F Dark Black
+
+    final now = DateTime.now();
+    final dateFormatted = DateFormat('dd/MM/yyyy').format(now);
+    final daysInIndonesian = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    final dayName = daysInIndonesian[now.weekday - 1];
+
+    final totalVolume = '${status.totalVolumeTodayMl.toInt()} ml';
+    final totalSesi = '${status.totalSesiToday}';
+    final battery = '${status.batteryPercentage}%';
+    const pumpDebit = '5.0 ml/s';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1AD5FF40),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. Date Header & Top-Right Detail Arrow Button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                dateFormatted,
+                style: const TextStyle(
+                  fontFamily: 'Utendo',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: textColor,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              // Top-Right Arrow Navigation Button
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => DayDetailOverviewPage(
+                        dayName: dayName,
+                        dateFormatted: dateFormatted,
+                        status: status,
+                      ),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        const begin = Offset(1.0, 0.0);
+                        const end = Offset.zero;
+                        const curve = Curves.easeInOutCubic;
+
+                        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                        return SlideTransition(
+                          position: animation.drive(tween),
+                          child: child,
+                        );
+                      },
+                      transitionDuration: const Duration(milliseconds: 300),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: ThemeProvider.blackColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.arrow_forward_rounded,
+                    color: ThemeProvider.greenAccentColor,
+                    size: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+
+          // 2. Big Day Name (e.g. Senin)
+          Text(
+            dayName,
+            style: const TextStyle(
+              fontFamily: 'Utendo',
+              fontSize: 42,
+              fontWeight: FontWeight.w900,
+              color: textColor,
+              letterSpacing: -1.0,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // 3. Smooth Auto-scrolling Slide Animation Ticker (Left to Right to Left)
+          AutoScrollingMetricsTicker(
+            totalVolume: totalVolume,
+            totalSesi: totalSesi,
+            battery: battery,
+            pumpDebit: pumpDebit,
+            textColor: textColor,
+          ),
+        ],
       ),
     );
   }
@@ -771,221 +878,145 @@ class _DashboardPageState extends State<DashboardPage> {
       ],
     );
   }
+}
 
-  // --- 6. INTERACTIVE DATE STRIP & TIMELINE SCHEDULE ---
-  Widget _buildDateAndScheduleSection(BuildContext context, DatabaseHelper dbHelper, bool isDark) {
-    final monthNames = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-    ];
-    final monthText = '${monthNames[_currentMonth.month - 1]} ${_currentMonth.year}';
-    final titleColor = isDark ? Colors.white : AppTheme.textDark;
+// --- SMOOTH AUTO-SCROLLING SLIDE TICKER ANIMATION (Left <-> Right) ---
+class AutoScrollingMetricsTicker extends StatefulWidget {
+  final String totalVolume;
+  final String totalSesi;
+  final String battery;
+  final String pumpDebit;
+  final Color textColor;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              monthText,
-              style: TextStyle(
-                fontFamily: 'Utendo',
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: titleColor,
-              ),
-            ),
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
-                    });
-                  },
-                  child: _buildCircleArrow(Icons.chevron_left, isDark),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
-                    });
-                  },
-                  child: _buildCircleArrow(Icons.chevron_right, isDark),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
+  const AutoScrollingMetricsTicker({
+    super.key,
+    required this.totalVolume,
+    required this.totalSesi,
+    required this.battery,
+    required this.pumpDebit,
+    required this.textColor,
+  });
 
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(_weekDays.length, (index) {
-            final item = _weekDays[index];
-            final isSelected = _selectedDayIndex == index;
-            return _buildDateItem(item['day']!, item['date']!, index, isSelected: isSelected, isDark: isDark);
-          }),
-        ),
-        const SizedBox(height: 20),
+  @override
+  State<AutoScrollingMetricsTicker> createState() => _AutoScrollingMetricsTickerState();
+}
 
-        FutureBuilder<List<SpraySchedule>>(
-          future: dbHelper.getAllSchedules(),
-          builder: (context, snapshot) {
-            final schedules = snapshot.data ?? [];
-            final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
+class _AutoScrollingMetricsTickerState extends State<AutoScrollingMetricsTicker> {
+  final ScrollController _scrollController = ScrollController();
+  Timer? _timer;
+  bool _scrollingForward = true;
 
-            if (schedules.isEmpty) {
-              return Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Center(
-                  child: Text(
-                    'Belum ada jadwal otomatis untuk hari ini.',
-                    style: TextStyle(fontFamily: 'Utendo', color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13),
-                  ),
-                ),
-              );
-            }
-
-            return ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: schedules.length,
-              itemBuilder: (context, index) {
-                final sched = schedules[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: isDark ? [] : AppTheme.shadowSM,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? (sched.isActive ? ThemeProvider.greenAccentColor : const Color(0xFF2C2D30))
-                              : (sched.isActive ? const Color(0xFFFEF3C7) : const Color(0xFFF3F4F6)),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.alarm,
-                          color: isDark
-                              ? (sched.isActive ? ThemeProvider.blackColor : Colors.grey)
-                              : (sched.isActive ? const Color(0xFFD97706) : Colors.grey),
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sched.title,
-                              style: TextStyle(
-                                fontFamily: 'Utendo',
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: isDark ? Colors.white : AppTheme.textDark,
-                              ),
-                            ),
-                            Text(
-                              '${sched.timeFormatted} • Durasi ${sched.durationSeconds} Detik',
-                              style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch(
-                        value: sched.isActive,
-                        activeTrackColor: isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor,
-                        activeThumbColor: isDark ? ThemeProvider.blackColor : null,
-                        onChanged: (val) async {
-                          final updated = sched.copyWith(isActive: val);
-                          await dbHelper.updateSchedule(updated);
-                          setState(() {});
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        ),
-      ],
-    );
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startAutoScroll();
+    });
   }
 
-  Widget _buildCircleArrow(IconData icon, bool isDark) {
-    return Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: isDark ? ThemeProvider.darkCardColor : Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: isDark ? [] : AppTheme.shadowSM,
-      ),
-      child: Icon(icon, size: 18, color: isDark ? Colors.white : AppTheme.textDark),
-    );
+  void _startAutoScroll() {
+    _timer = Timer.periodic(const Duration(milliseconds: 3500), (timer) {
+      if (!_scrollController.hasClients) return;
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      if (maxScroll <= 0) return;
+
+      if (_scrollingForward) {
+        _scrollController.animateTo(
+          maxScroll,
+          duration: const Duration(milliseconds: 2800),
+          curve: Curves.easeInOutCubic,
+        );
+        _scrollingForward = false;
+      } else {
+        _scrollController.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 2800),
+          curve: Curves.easeInOutCubic,
+        );
+        _scrollingForward = true;
+      }
+    });
   }
 
-  Widget _buildDateItem(String dayLetter, String dateNum, int index, {required bool isSelected, required bool isDark}) {
-    final activeBg = isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDCFCE7);
-    final activeBorder = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
-    final activeText = isDark ? ThemeProvider.blackColor : const Color(0xFF14532D);
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedDayIndex = index;
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? activeBg : (isDark ? ThemeProvider.darkCardColor : Colors.white),
-          borderRadius: BorderRadius.circular(10), // Squared rectangular date chips
-          border: Border.all(
-            color: isSelected ? activeBorder : Colors.transparent,
-            width: 1.5,
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      controller: _scrollController,
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          Text(
+            'Total Volume: ${widget.totalVolume}',
+            style: TextStyle(
+              fontFamily: 'Utendo',
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: widget.textColor,
+            ),
           ),
-          boxShadow: (isSelected || isDark) ? [] : AppTheme.shadowSM,
-        ),
-        child: Column(
-          children: [
-            Text(
-              dayLetter,
-              style: TextStyle(
-                fontFamily: 'Utendo',
-                fontSize: 11,
-                color: isSelected ? activeText : Colors.grey.shade500,
-                fontWeight: FontWeight.bold,
-              ),
+          const Text(
+            '  |  ',
+            style: TextStyle(
+              fontFamily: 'Utendo',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.black38,
             ),
-            const SizedBox(height: 4),
-            Text(
-              dateNum,
-              style: TextStyle(
-                fontFamily: 'Utendo',
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: isSelected ? activeText : (isDark ? Colors.white : AppTheme.textDark),
-              ),
+          ),
+          Text(
+            'Total Sesi: ${widget.totalSesi}',
+            style: TextStyle(
+              fontFamily: 'Utendo',
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: widget.textColor,
             ),
-          ],
-        ),
+          ),
+          const Text(
+            '  |  ',
+            style: TextStyle(
+              fontFamily: 'Utendo',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.black38,
+            ),
+          ),
+          Text(
+            'Baterai: ${widget.battery}',
+            style: TextStyle(
+              fontFamily: 'Utendo',
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: widget.textColor,
+            ),
+          ),
+          const Text(
+            '  |  ',
+            style: TextStyle(
+              fontFamily: 'Utendo',
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.black38,
+            ),
+          ),
+          Text(
+            'Debit Pompa: ${widget.pumpDebit}',
+            style: TextStyle(
+              fontFamily: 'Utendo',
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: widget.textColor,
+            ),
+          ),
+        ],
       ),
     );
   }

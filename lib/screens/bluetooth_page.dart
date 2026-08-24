@@ -211,11 +211,6 @@ class _BluetoothPageState extends State<BluetoothPage> {
               if (_selectedModeIndex == 1) ...[
                 _buildCloudSection(context, mqttService, btService, isDark, cardBg, primaryAccent, titleColor),
               ],
-
-              const SizedBox(height: AppTheme.spacingXL),
-
-              // Hardware Specs Footer
-              _buildHardwareInfoCard(isDark, cardBg, titleColor),
             ],
           ),
         ),
@@ -229,31 +224,31 @@ class _BluetoothPageState extends State<BluetoothPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: btService.isConnected
                 ? (isDark ? primaryAccent : const Color(0xFFDCFCE7))
                 : cardBg,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: isDark ? [] : AppTheme.shadowSM,
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: btService.isConnected
                       ? (isDark ? ThemeProvider.blackColor : AppTheme.primaryColor)
-                      : const Color(0xFFF3F4F6),
+                      : const Color(0xFF2C2D30),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   btService.isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                  color: btService.isConnected ? Colors.white : Colors.grey,
-                  size: 24,
+                  color: btService.isConnected ? Colors.white : Colors.grey.shade400,
+                  size: 20,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,18 +257,19 @@ class _BluetoothPageState extends State<BluetoothPage> {
                       btService.isConnected ? 'Terhubung via BLE' : 'Bluetooth Terputus',
                       style: TextStyle(
                         fontFamily: 'Utendo',
-                        fontSize: 12,
+                        fontSize: 11,
                         color: btService.isConnected
                             ? (isDark ? ThemeProvider.blackColor : const Color(0xFF15803D))
-                            : Colors.grey,
+                            : Colors.grey.shade400,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       btService.connectedDeviceName,
                       style: TextStyle(
                         fontFamily: 'Utendo',
-                        fontSize: 18,
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
                         color: btService.isConnected && isDark ? ThemeProvider.blackColor : titleColor,
                       ),
@@ -287,9 +283,10 @@ class _BluetoothPageState extends State<BluetoothPage> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.errorColor,
                     side: const BorderSide(color: AppTheme.errorColor),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Putuskan', style: TextStyle(fontFamily: 'Utendo')),
+                  child: const Text('Putuskan', style: TextStyle(fontFamily: 'Utendo', fontSize: 12)),
                 ),
             ],
           ),
@@ -303,22 +300,26 @@ class _BluetoothPageState extends State<BluetoothPage> {
               'Pindai Perangkat Terdekat',
               style: TextStyle(fontFamily: 'Utendo', fontSize: 16, fontWeight: FontWeight.bold, color: titleColor),
             ),
-            ElevatedButton.icon(
+            IconButton(
+              tooltip: 'Pindai Ulang BLE',
               onPressed: btService.isScanning ? null : () => btService.startScan(),
-              icon: btService.isScanning
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Icon(Icons.search, size: 18, color: isDark ? ThemeProvider.blackColor : Colors.white),
-              label: Text(
-                btService.isScanning ? 'Memindai...' : 'Pindai BLE',
-                style: TextStyle(fontFamily: 'Utendo', color: isDark ? ThemeProvider.blackColor : Colors.white),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryAccent,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDark ? primaryAccent : const Color(0xFFDCFCE7),
+                  shape: BoxShape.circle,
+                ),
+                child: btService.isScanning
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: ThemeProvider.blackColor),
+                      )
+                    : Icon(
+                        Icons.refresh_rounded,
+                        size: 20,
+                        color: isDark ? ThemeProvider.blackColor : AppTheme.primaryColor,
+                      ),
               ),
             ),
           ],
@@ -437,31 +438,31 @@ class _BluetoothPageState extends State<BluetoothPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: mqttService.isConnected && mqttService.isEspOnline
                 ? (isDark ? primaryAccent : const Color(0xFFDBEAFE))
                 : cardBg,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: isDark ? [] : AppTheme.shadowSM,
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: mqttService.isConnected && mqttService.isEspOnline
                       ? (isDark ? ThemeProvider.blackColor : const Color(0xFF1D4ED8))
-                      : const Color(0xFFF3F4F6),
+                      : const Color(0xFF2C2D30),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   mqttService.isConnected ? Icons.cloud_done : Icons.cloud_off,
-                  color: mqttService.isConnected ? Colors.white : Colors.grey,
-                  size: 24,
+                  color: mqttService.isConnected ? Colors.white : Colors.grey.shade400,
+                  size: 20,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -472,18 +473,19 @@ class _BluetoothPageState extends State<BluetoothPage> {
                           : 'Koneksi Cloud Terputus',
                       style: TextStyle(
                         fontFamily: 'Utendo',
-                        fontSize: 12,
+                        fontSize: 11,
                         color: mqttService.isConnected && mqttService.isEspOnline
                             ? (isDark ? ThemeProvider.blackColor : const Color(0xFF1E40AF))
-                            : Colors.grey,
+                            : Colors.grey.shade400,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       'Perangkat ${mqttService.deviceId}',
                       style: TextStyle(
                         fontFamily: 'Utendo',
-                        fontSize: 18,
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
                         color: mqttService.isConnected && mqttService.isEspOnline && isDark ? ThemeProvider.blackColor : titleColor,
                       ),
@@ -590,45 +592,6 @@ class _BluetoothPageState extends State<BluetoothPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildHardwareInfoCard(bool isDark, Color cardBg, Color titleColor) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: isDark ? [] : AppTheme.shadowSM,
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDCFCE7),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(Icons.developer_board, color: isDark ? ThemeProvider.blackColor : AppTheme.primaryColor, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Spesifikasi Perangkat ESP32',
-                  style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 15, color: titleColor),
-                ),
-                Text(
-                  'BLE v4.2 • MQTT Protocol • Dual Core System',
-                  style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -7,8 +7,26 @@ import '../services/database_helper.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
 
-class HistoryPage extends StatelessWidget {
+class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
+
+  @override
+  State<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  int _selectedDayIndex = 1; // Default to Senin 08
+  DateTime _currentMonth = DateTime(2025, 8, 1); // August 2025
+
+  final List<Map<String, String>> _weekDays = [
+    {'day': 'S', 'date': '07', 'fullDay': 'Minggu', 'fullDate': '07/08/2025'},
+    {'day': 'M', 'date': '08', 'fullDay': 'Senin', 'fullDate': '08/08/2025'},
+    {'day': 'T', 'date': '09', 'fullDay': 'Selasa', 'fullDate': '09/08/2025'},
+    {'day': 'W', 'date': '10', 'fullDay': 'Rabu', 'fullDate': '10/08/2025'},
+    {'day': 'T', 'date': '11', 'fullDay': 'Kamis', 'fullDate': '11/08/2025'},
+    {'day': 'F', 'date': '12', 'fullDay': 'Jumat', 'fullDate': '12/08/2025'},
+    {'day': 'S', 'date': '13', 'fullDay': 'Sabtu', 'fullDate': '13/08/2025'},
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +102,10 @@ class HistoryPage extends StatelessWidget {
               ),
               const SizedBox(height: AppTheme.spacingLG),
 
+              // Calendar Date Strip Section
+              _buildDateStripSection(context, isDark),
+              const SizedBox(height: AppTheme.spacingLG),
+
               FutureBuilder<List<SprayLog>>(
                 future: dbHelper.getAllLogs(),
                 builder: (context, snapshot) {
@@ -118,61 +140,9 @@ class HistoryPage extends StatelessWidget {
                     );
                   }
 
-                  final totalVolume = logs.fold<double>(0, (sum, l) => sum + l.volumeMl);
-                  final totalSesi = logs.length;
-
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Summary cards
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: cardBg,
-                                borderRadius: BorderRadius.circular(24),
-                                boxShadow: isDark ? [] : AppTheme.shadowSM,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Total Sesi', style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey)),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '$totalSesi Sesi',
-                                    style: TextStyle(fontFamily: 'Utendo', fontSize: 20, fontWeight: FontWeight.w800, color: titleColor),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: isDark ? primaryAccent : const Color(0xFFDCFCE7),
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Total Volume', style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? ThemeProvider.blackColor : const Color(0xFF15803D))),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '${totalVolume.toInt()} ml',
-                                    style: TextStyle(fontFamily: 'Utendo', fontSize: 20, fontWeight: FontWeight.w800, color: isDark ? ThemeProvider.blackColor : const Color(0xFF14532D)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppTheme.spacingLG),
-
                       // Chart Card
                       Container(
                         padding: const EdgeInsets.all(20),
@@ -278,12 +248,137 @@ class HistoryPage extends StatelessWidget {
                           );
                         },
                       ),
+                      const SizedBox(height: 80),
                     ],
                   );
                 },
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // --- CALENDAR DATE STRIP SECTION ---
+  Widget _buildDateStripSection(BuildContext context, bool isDark) {
+    final monthNames = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    final monthText = '${monthNames[_currentMonth.month - 1]} ${_currentMonth.year}';
+    final titleColor = isDark ? Colors.white : AppTheme.textDark;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              monthText,
+              style: TextStyle(
+                fontFamily: 'Utendo',
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: titleColor,
+              ),
+            ),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
+                    });
+                  },
+                  child: _buildCircleArrow(Icons.chevron_left, isDark),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
+                    });
+                  },
+                  child: _buildCircleArrow(Icons.chevron_right, isDark),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(_weekDays.length, (index) {
+            final item = _weekDays[index];
+            final isSelected = _selectedDayIndex == index;
+            return _buildDateItem(item['day']!, item['date']!, index, isSelected: isSelected, isDark: isDark);
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCircleArrow(IconData icon, bool isDark) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: isDark ? ThemeProvider.darkCardColor : Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: isDark ? [] : AppTheme.shadowSM,
+      ),
+      child: Icon(icon, size: 18, color: isDark ? Colors.white : AppTheme.textDark),
+    );
+  }
+
+  Widget _buildDateItem(String dayLetter, String dateNum, int index, {required bool isSelected, required bool isDark}) {
+    final activeBg = isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDCFCE7);
+    final activeBorder = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+    final activeText = isDark ? ThemeProvider.blackColor : const Color(0xFF14532D);
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedDayIndex = index;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? activeBg : (isDark ? ThemeProvider.darkCardColor : Colors.white),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? activeBorder : Colors.transparent,
+            width: 1.5,
+          ),
+          boxShadow: (isSelected || isDark) ? [] : AppTheme.shadowSM,
+        ),
+        child: Column(
+          children: [
+            Text(
+              dayLetter,
+              style: TextStyle(
+                fontFamily: 'Utendo',
+                fontSize: 11,
+                color: isSelected ? activeText : Colors.grey.shade500,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              dateNum,
+              style: TextStyle(
+                fontFamily: 'Utendo',
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: isSelected ? activeText : (isDark ? Colors.white : AppTheme.textDark),
+              ),
+            ),
+          ],
         ),
       ),
     );
