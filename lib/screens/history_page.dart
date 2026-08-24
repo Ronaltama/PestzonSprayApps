@@ -310,7 +310,6 @@ class _HistoryPageState extends State<HistoryPage> {
         const SizedBox(height: 14),
 
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(_weekDays.length, (index) {
             final item = _weekDays[index];
             final isSelected = _selectedDayIndex == index;
@@ -339,46 +338,50 @@ class _HistoryPageState extends State<HistoryPage> {
     final activeBorder = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
     final activeText = isDark ? ThemeProvider.blackColor : const Color(0xFF14532D);
 
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedDayIndex = index;
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-        decoration: BoxDecoration(
-          color: isSelected ? activeBg : (isDark ? ThemeProvider.darkCardColor : Colors.white),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? activeBorder : Colors.transparent,
-            width: 1.5,
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _selectedDayIndex = index;
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? activeBg : (isDark ? ThemeProvider.darkCardColor : Colors.white),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isSelected ? activeBorder : Colors.transparent,
+              width: 1.5,
+            ),
+            boxShadow: (isSelected || isDark) ? [] : AppTheme.shadowSM,
           ),
-          boxShadow: (isSelected || isDark) ? [] : AppTheme.shadowSM,
-        ),
-        child: Column(
-          children: [
-            Text(
-              dayLetter,
-              style: TextStyle(
-                fontFamily: 'Utendo',
-                fontSize: 10,
-                color: isSelected ? activeText : Colors.grey.shade500,
-                fontWeight: FontWeight.bold,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                dayLetter,
+                style: TextStyle(
+                  fontFamily: 'Utendo',
+                  fontSize: 10,
+                  color: isSelected ? activeText : Colors.grey.shade500,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              dateNum,
-              style: TextStyle(
-                fontFamily: 'Utendo',
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: isSelected ? activeText : (isDark ? Colors.white : AppTheme.textDark),
+              const SizedBox(height: 2),
+              Text(
+                dateNum,
+                style: TextStyle(
+                  fontFamily: 'Utendo',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: isSelected ? activeText : (isDark ? Colors.white : AppTheme.textDark),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
