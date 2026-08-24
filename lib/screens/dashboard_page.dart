@@ -8,7 +8,10 @@ import '../services/mqtt_service.dart';
 import '../services/database_helper.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
+import '../models/spray_log.dart';
+import '../utils/app_notification.dart';
 import 'day_detail_overview_page.dart';
+import 'weekly_detail_overview_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -19,6 +22,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   double _selectedDuration = 30.0;
+  int _selectedBarIndex = DateTime.now().weekday - 1;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +62,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: AppTheme.spacingLG),
 
               // 3. STATISTIC BAR CHART (Moved directly below date card)
-              _buildStatisticChartCard(context, isDark),
+              _buildStatisticChartCard(context, dbHelper, status, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
               // 4. SOLAR & BATTERY CARD (Sistem Daya Kebun)
@@ -240,14 +244,12 @@ class _DashboardPageState extends State<DashboardPage> {
         // Connection Badge
         GestureDetector(
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  isBle
-                      ? 'Terhubung via Bluetooth (BLE)'
-                      : (isMqtt ? 'Terhubung via Cloud (MQTT)' : 'Perangkat Terputus! Silakan buka menu Device.'),
-                ),
-              ),
+            AppNotification.show(
+              context,
+              isBle
+                  ? 'Terhubung via Bluetooth (BLE)'
+                  : (isMqtt ? 'Terhubung via Cloud (MQTT)' : 'Perangkat Terputus! Silakan buka menu Device.'),
+              isError: !isBle && !isMqtt,
             );
           },
           child: _buildConnectionBadge(isBle, isMqtt, isDark),
@@ -258,14 +260,14 @@ class _DashboardPageState extends State<DashboardPage> {
             final schedules = await dbHelper.getAllSchedules();
             if (isBle) {
               btService.syncSchedules(schedules);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Jadwal tersinkron via BLE')),
-              );
+              if (context.mounted) {
+                AppNotification.show(context, 'Jadwal tersinkron via BLE');
+              }
             } else if (isMqtt) {
               mqttService.syncSchedules(schedules);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Jadwal tersinkron via MQTT')),
-              );
+              if (context.mounted) {
+                AppNotification.show(context, 'Jadwal tersinkron via MQTT');
+              }
             }
           },
           icon: Container(
@@ -583,155 +585,251 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // --- 5. STATISTIC BAR CHART ---
-  Widget _buildStatisticChartCard(BuildContext context, bool isDark) {
+  Widget _buildStatisticChartCard(
+    BuildContext context,
+    DatabaseHelper dbHelper,
+    dynamic status,
+    bool isDark,
+  ) {
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
     final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? ThemeProvider.darkCardColor : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: isDark ? [] : AppTheme.shadowSM,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    final days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    final dayAbbr = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+
+    final todayIndex = DateTime.now().weekday - 1;
+
+    return FutureBuilder<List<SprayLog>>(
+      future: dbHelper.getAllLogs(),
+      builder: (context, snapshot) {
+        final logs = snapshot.data ?? [];
+
+        // Daily volume data in ml computed from real logs for this week
+        final List<double> volumes = List.filled(7, 0.0);
+        final now = DateTime.now();
+        final mondayStart = DateTime(now.year, now.month, now.day).subtract(Duration(days: now.weekday - 1));
+        final sundayEnd = mondayStart.add(const Duration(days: 7));
+
+        for (var log in logs) {
+          if (log.timestamp.isAfter(mondayStart.subtract(const Duration(seconds: 1))) &&
+              log.timestamp.isBefore(sundayEnd)) {
+            final dayIdx = log.timestamp.weekday - 1;
+            if (dayIdx >= 0 && dayIdx < 7) {
+              volumes[dayIdx] += log.volumeMl;
+            }
+          }
+        }
+
+        // Incorporate current live status volume if larger
+        if (status != null && status.totalVolumeTodayMl > volumes[todayIndex]) {
+          volumes[todayIndex] = status.totalVolumeTodayMl;
+        }
+
+        final totalWeeklyVolume = volumes.reduce((a, b) => a + b);
+
+        // Selected day index (defaults to todayIndex)
+        final selectedIndex = (_selectedBarIndex >= 0 && _selectedBarIndex < 7) ? _selectedBarIndex : todayIndex;
+
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: isDark ? ThemeProvider.darkCardColor : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: isDark ? [] : AppTheme.shadowSM,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Statistik Volume',
-                    style: TextStyle(
-                      fontFamily: 'Utendo',
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: titleColor,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Statistik Volume',
+                        style: TextStyle(
+                          fontFamily: 'Utendo',
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: titleColor,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Minggu Ini • Total ${totalWeeklyVolume.toInt()} ml',
+                        style: TextStyle(
+                          fontFamily: 'Utendo',
+                          fontSize: 12,
+                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Minggu Ini • Total 1.250 ml',
-                    style: TextStyle(
-                      fontFamily: 'Utendo',
-                      fontSize: 12,
-                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.flag_outlined,
+                          size: 14,
+                          color: primaryAccent,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Target 1.500 ml',
+                          style: TextStyle(
+                            fontFamily: 'Utendo',
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: primaryAccent,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.flag_outlined,
-                      size: 14,
-                      color: primaryAccent,
+              const SizedBox(height: 20),
+
+              SizedBox(
+                height: 180,
+                child: BarChart(
+                  BarChartData(
+                    alignment: BarChartAlignment.spaceAround,
+                    maxY: 120,
+                    barTouchData: BarTouchData(
+                      enabled: true,
+                      touchCallback: (FlTouchEvent event, barTouchResponse) {
+                        if (!event.isInterestedForInteractions || barTouchResponse == null || barTouchResponse.spot == null) {
+                          return;
+                        }
+                        final touchedIdx = barTouchResponse.spot!.touchedBarGroupIndex;
+                        if (touchedIdx >= 0 && touchedIdx < 7 && touchedIdx != _selectedBarIndex) {
+                          setState(() {
+                            _selectedBarIndex = touchedIdx;
+                          });
+                        }
+                      },
+                      touchTooltipData: BarTouchTooltipData(
+                        getTooltipColor: (group) => isDark ? const Color(0xFF2C2D30) : Colors.white,
+                        tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                          final vol = volumes[groupIndex].toInt();
+                          final pct = (vol / 10).toInt();
+                          return BarTooltipItem(
+                            '${days[groupIndex]}\n$vol ml ($pct%)',
+                            TextStyle(
+                              fontFamily: 'Utendo',
+                              fontWeight: FontWeight.bold,
+                              color: primaryAccent,
+                              fontSize: 11,
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Target 1.500 ml',
+                    titlesData: FlTitlesData(
+                      show: true,
+                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          getTitlesWidget: (val, meta) {
+                            final idx = val.toInt();
+                            if (idx < 0 || idx >= 7) return const SizedBox();
+                            final isSelected = idx == selectedIndex;
+                            final hasData = volumes[idx] > 0;
+                            final style = TextStyle(
+                              fontFamily: 'Utendo',
+                              color: (isSelected && hasData) ? primaryAccent : (isDark ? Colors.grey.shade400 : Colors.grey),
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                              fontSize: 12,
+                            );
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(dayAbbr[idx], style: style),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    gridData: const FlGridData(show: false),
+                    borderData: FlBorderData(show: false),
+                    barGroups: List.generate(7, (index) {
+                      final hasData = volumes[index] > 0;
+                      final barHeight = hasData ? (volumes[index] / 10).clamp(10.0, 120.0) : 0.0;
+                      return _makeBarGroup(
+                        index,
+                        barHeight,
+                        isHighlighted: (index == selectedIndex) && hasData,
+                        isDark: isDark,
+                      );
+                    }),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Tombol Lihat Detail di bawah bar (Tanpa Icon, Navigasi ke Rincian Seminggu)
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => WeeklyDetailOverviewPage(
+                        status: status,
+                      ),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        const begin = Offset(1.0, 0.0);
+                        const end = Offset.zero;
+                        const curve = Curves.easeInOutCubic;
+
+                        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                        return SlideTransition(
+                          position: animation.drive(tween),
+                          child: child,
+                        );
+                      },
+                      transitionDuration: const Duration(milliseconds: 300),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: primaryAccent.withValues(alpha: 0.4),
+                      width: 1,
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'Lihat Detail',
                       style: TextStyle(
                         fontFamily: 'Utendo',
-                        fontSize: 11,
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
                         color: primaryAccent,
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-
-          SizedBox(
-            height: 180,
-            child: BarChart(
-              BarChartData(
-                alignment: BarChartAlignment.spaceAround,
-                maxY: 120,
-                barTouchData: BarTouchData(
-                  enabled: true,
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (group) => isDark ? const Color(0xFF2C2D30) : Colors.white,
-                    tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                      final days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-                      final percentages = [44, 34, 110, 47, 32, 79, 24];
-                      final vols = [440, 340, 1100, 470, 320, 790, 240];
-                      return BarTooltipItem(
-                        '${days[groupIndex]}\n${vols[groupIndex]} ml (${percentages[groupIndex]}%)',
-                        TextStyle(
-                          fontFamily: 'Utendo',
-                          fontWeight: FontWeight.bold,
-                          color: primaryAccent,
-                          fontSize: 11,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                titlesData: FlTitlesData(
-                  show: true,
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (val, meta) {
-                        final idx = val.toInt();
-                        final isWed = idx == 2;
-                        final style = TextStyle(
-                          fontFamily: 'Utendo',
-                          color: isWed ? primaryAccent : (isDark ? Colors.grey.shade400 : Colors.grey),
-                          fontWeight: isWed ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 12,
-                        );
-                        String text;
-                        switch (idx) {
-                          case 0: text = 'Sen'; break;
-                          case 1: text = 'Sel'; break;
-                          case 2: text = 'Rab'; break;
-                          case 3: text = 'Kam'; break;
-                          case 4: text = 'Jum'; break;
-                          case 5: text = 'Sab'; break;
-                          case 6: text = 'Min'; break;
-                          default: text = ''; break;
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(text, style: style),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                gridData: const FlGridData(show: false),
-                borderData: FlBorderData(show: false),
-                barGroups: [
-                  _makeBarGroup(0, 44, isHighlighted: false, isDark: isDark),
-                  _makeBarGroup(1, 34, isHighlighted: false, isDark: isDark),
-                  _makeBarGroup(2, 110, isHighlighted: true, isDark: isDark),
-                  _makeBarGroup(3, 47, isHighlighted: false, isDark: isDark),
-                  _makeBarGroup(4, 32, isHighlighted: false, isDark: isDark),
-                  _makeBarGroup(5, 79, isHighlighted: false, isDark: isDark),
-                  _makeBarGroup(6, 24, isHighlighted: false, isDark: isDark),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

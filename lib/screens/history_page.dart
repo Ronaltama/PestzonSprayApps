@@ -6,6 +6,7 @@ import '../models/spray_log.dart';
 import '../services/database_helper.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
+import '../utils/app_notification.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -15,18 +16,7 @@ class HistoryPage extends StatefulWidget {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
-  int _selectedDayIndex = 1; // Default to Senin 08
-  DateTime _currentMonth = DateTime(2025, 8, 1); // August 2025
-
-  final List<Map<String, String>> _weekDays = [
-    {'day': 'Min', 'date': '07', 'fullDay': 'Minggu', 'fullDate': '07/08/2025'},
-    {'day': 'Sen', 'date': '08', 'fullDay': 'Senin', 'fullDate': '08/08/2025'},
-    {'day': 'Sel', 'date': '09', 'fullDay': 'Selasa', 'fullDate': '09/08/2025'},
-    {'day': 'Rab', 'date': '10', 'fullDay': 'Rabu', 'fullDate': '10/08/2025'},
-    {'day': 'Kam', 'date': '11', 'fullDay': 'Kamis', 'fullDate': '11/08/2025'},
-    {'day': 'Jum', 'date': '12', 'fullDay': 'Jumat', 'fullDate': '12/08/2025'},
-    {'day': 'Sab', 'date': '13', 'fullDay': 'Sabtu', 'fullDate': '13/08/2025'},
-  ];
+  DateTime _selectedDate = DateTime.now();
 
   @override
   Widget build(BuildContext context) {
@@ -51,52 +41,34 @@ class _HistoryPageState extends State<HistoryPage> {
             children: [
               // Header
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDark ? primaryAccent : const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(Icons.history, color: isDark ? ThemeProvider.blackColor : AppTheme.primaryColor, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isDark ? primaryAccent : const Color(0xFFDCFCE7),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(Icons.history, color: isDark ? ThemeProvider.blackColor : AppTheme.primaryColor, size: 24),
+                      Text(
+                        'Database Lokal HP',
+                        style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey, fontWeight: FontWeight.w500),
                       ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Database Lokal HP',
-                            style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey, fontWeight: FontWeight.w500),
-                          ),
-                          Text(
-                            'Riwayat Semprot',
-                            style: TextStyle(
-                              fontFamily: 'Utendo',
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: titleColor,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        'Riwayat Semprot',
+                        style: TextStyle(
+                          fontFamily: 'Utendo',
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: titleColor,
+                          letterSpacing: -0.5,
+                        ),
                       ),
                     ],
-                  ),
-                  IconButton(
-                    tooltip: 'Hapus Semua Riwayat',
-                    onPressed: () => _confirmClearLogs(context, dbHelper),
-                    icon: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: cardBg,
-                        shape: BoxShape.circle,
-                        boxShadow: isDark ? [] : AppTheme.shadowSM,
-                      ),
-                      child: const Icon(Icons.delete_sweep, size: 20, color: AppTheme.errorColor),
-                    ),
                   ),
                 ],
               ),
@@ -112,9 +84,15 @@ class _HistoryPageState extends State<HistoryPage> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Center(child: CircularProgressIndicator(color: primaryAccent));
                   }
-                  final logs = snapshot.data ?? [];
+                  final allLogs = snapshot.data ?? [];
+                  final logs = allLogs.where((log) {
+                    return log.timestamp.year == _selectedDate.year &&
+                        log.timestamp.month == _selectedDate.month &&
+                        log.timestamp.day == _selectedDate.day;
+                  }).toList();
 
                   if (logs.isEmpty) {
+                    final dateFormattedStr = DateFormat('dd MMM yyyy').format(_selectedDate);
                     return Container(
                       padding: const EdgeInsets.all(32),
                       decoration: BoxDecoration(
@@ -128,10 +106,15 @@ class _HistoryPageState extends State<HistoryPage> {
                           children: [
                             Icon(Icons.history_toggle_off, size: 48, color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
                             const SizedBox(height: 16),
-                            Text('Belum ada riwayat penyemprotan tersimpan.', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor)),
+                            Text(
+                              'Belum ada riwayat penyemprotan tersimpan pada $dateFormattedStr.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               'Riwayat otomatis tersimpan di SQLite HP setelah disemprot.',
+                              textAlign: TextAlign.center,
                               style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
                             ),
                           ],
@@ -170,7 +153,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
                       // History List
                       Text(
-                        'Daftar Riwayat Sesi',
+                        'Daftar Riwayat Sesi (${DateFormat('dd MMM yyyy').format(_selectedDate)})',
                         style: TextStyle(fontFamily: 'Utendo', fontSize: 16, fontWeight: FontWeight.bold, color: titleColor),
                       ),
                       const SizedBox(height: 10),
@@ -266,8 +249,15 @@ class _HistoryPageState extends State<HistoryPage> {
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
-    final monthText = '${monthNames[_currentMonth.month - 1]} ${_currentMonth.year}';
+    final monthText = '${monthNames[_selectedDate.month - 1]} ${_selectedDate.year}';
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
+    final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final monday = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day)
+        .subtract(Duration(days: _selectedDate.weekday - 1));
+    final daysAbbr = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,56 +274,134 @@ class _HistoryPageState extends State<HistoryPage> {
                 color: titleColor,
               ),
             ),
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1, 1);
-                    });
-                  },
-                  child: _buildCircleArrow(Icons.chevron_left, isDark),
+            // Tombol Icon Calendar (Menggantikan tombol panah)
+            GestureDetector(
+              onTap: () => _showCalendarModal(context, isDark),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDark ? ThemeProvider.darkCardColor : Colors.white,
+                  shape: BoxShape.circle,
+                  border: isDark ? Border.all(color: primaryAccent.withValues(alpha: 0.3)) : null,
+                  boxShadow: isDark ? [] : AppTheme.shadowSM,
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
-                    });
-                  },
-                  child: _buildCircleArrow(Icons.chevron_right, isDark),
+                child: Icon(
+                  Icons.calendar_month_rounded,
+                  size: 20,
+                  color: isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor,
                 ),
-              ],
+              ),
             ),
           ],
         ),
         const SizedBox(height: 14),
 
         Row(
-          children: List.generate(_weekDays.length, (index) {
-            final item = _weekDays[index];
-            final isSelected = _selectedDayIndex == index;
-            return _buildDateItem(item['day']!, item['date']!, index, isSelected: isSelected, isDark: isDark);
+          children: List.generate(7, (index) {
+            final dayDate = monday.add(Duration(days: index));
+            final dayLetter = daysAbbr[index];
+            final dateNum = DateFormat('dd').format(dayDate);
+            final isSelected = dayDate.year == _selectedDate.year &&
+                dayDate.month == _selectedDate.month &&
+                dayDate.day == _selectedDate.day;
+            final isFuture = dayDate.isAfter(todayStart);
+
+            return _buildDateItem(
+              dayLetter,
+              dateNum,
+              dayDate,
+              isSelected: isSelected,
+              isFuture: isFuture,
+              isDark: isDark,
+            );
           }),
         ),
       ],
     );
   }
 
-  Widget _buildCircleArrow(IconData icon, bool isDark) {
-    return Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: isDark ? ThemeProvider.darkCardColor : Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: isDark ? [] : AppTheme.shadowSM,
-      ),
-      child: Icon(icon, size: 18, color: isDark ? Colors.white : AppTheme.textDark),
+  // Custom styled Calendar Modal matching application theme
+  Future<void> _showCalendarModal(BuildContext context, bool isDark) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final initial = _selectedDate.isAfter(today) ? today : _selectedDate;
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: today, // Rule: Future dates (hari esok) cannot be selected!
+      helpText: 'PILIH TANGGAL RIWAYAT',
+      cancelText: 'BATAL',
+      confirmText: 'PILIH',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: isDark
+                ? ColorScheme.dark(
+                    primary: ThemeProvider.greenAccentColor,
+                    onPrimary: ThemeProvider.blackColor,
+                    surface: ThemeProvider.darkCardColor,
+                    onSurface: Colors.white,
+                    secondary: ThemeProvider.greenAccentColor,
+                  )
+                : ColorScheme.light(
+                    primary: AppTheme.primaryColor,
+                    onPrimary: Colors.white,
+                    surface: Colors.white,
+                    onSurface: AppTheme.textDark,
+                  ),
+            dialogTheme: DialogThemeData(
+              backgroundColor: isDark ? ThemeProvider.darkBgColor : Colors.white,
+            ),
+            datePickerTheme: DatePickerThemeData(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              headerBackgroundColor: isDark ? ThemeProvider.darkCardColor : AppTheme.primaryColor,
+              headerForegroundColor: isDark ? ThemeProvider.greenAccentColor : Colors.white,
+              dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+                }
+                return null;
+              }),
+              dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return isDark ? Colors.grey.shade700 : Colors.grey.shade400;
+                }
+                if (states.contains(WidgetState.selected)) {
+                  return isDark ? ThemeProvider.blackColor : Colors.white;
+                }
+                return isDark ? Colors.white : AppTheme.textDark;
+              }),
+              todayBorder: BorderSide(color: isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor,
+                textStyle: const TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
+
+    if (pickedDate != null) {
+      setState(() {
+        _selectedDate = pickedDate;
+      });
+    }
   }
 
-  Widget _buildDateItem(String dayLetter, String dateNum, int index, {required bool isSelected, required bool isDark}) {
+  Widget _buildDateItem(
+    String dayLetter,
+    String dateNum,
+    DateTime dayDate, {
+    required bool isSelected,
+    required bool isFuture,
+    required bool isDark,
+  }) {
     final activeBg = isDark ? ThemeProvider.greenAccentColor : const Color(0xFFDCFCE7);
     final activeBorder = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
     final activeText = isDark ? ThemeProvider.blackColor : const Color(0xFF14532D);
@@ -341,8 +409,16 @@ class _HistoryPageState extends State<HistoryPage> {
     return Expanded(
       child: GestureDetector(
         onTap: () {
+          if (isFuture) {
+            AppNotification.show(
+              context,
+              'Hari esok belum dapat dipilih.',
+              isError: true,
+            );
+            return;
+          }
           setState(() {
-            _selectedDayIndex = index;
+            _selectedDate = dayDate;
           });
         },
         child: AnimatedContainer(
@@ -350,13 +426,17 @@ class _HistoryPageState extends State<HistoryPage> {
           margin: const EdgeInsets.symmetric(horizontal: 3),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? activeBg : (isDark ? ThemeProvider.darkCardColor : Colors.white),
+            color: isSelected
+                ? activeBg
+                : (isFuture
+                    ? (isDark ? const Color(0xFF181818) : const Color(0xFFF3F4F6))
+                    : (isDark ? ThemeProvider.darkCardColor : Colors.white)),
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
               color: isSelected ? activeBorder : Colors.transparent,
               width: 1.5,
             ),
-            boxShadow: (isSelected || isDark) ? [] : AppTheme.shadowSM,
+            boxShadow: (isSelected || isDark || isFuture) ? [] : AppTheme.shadowSM,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -366,7 +446,11 @@ class _HistoryPageState extends State<HistoryPage> {
                 style: TextStyle(
                   fontFamily: 'Utendo',
                   fontSize: 10,
-                  color: isSelected ? activeText : Colors.grey.shade500,
+                  color: isSelected
+                      ? activeText
+                      : (isFuture
+                          ? (isDark ? Colors.grey.shade700 : Colors.grey.shade400)
+                          : Colors.grey.shade500),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -377,7 +461,11 @@ class _HistoryPageState extends State<HistoryPage> {
                   fontFamily: 'Utendo',
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: isSelected ? activeText : (isDark ? Colors.white : AppTheme.textDark),
+                  color: isSelected
+                      ? activeText
+                      : (isFuture
+                          ? (isDark ? Colors.grey.shade700 : Colors.grey.shade400)
+                          : (isDark ? Colors.white : AppTheme.textDark)),
                 ),
               ),
             ],
@@ -431,37 +519,6 @@ class _HistoryPageState extends State<HistoryPage> {
             ],
           );
         }).toList(),
-      ),
-    );
-  }
-
-  void _confirmClearLogs(BuildContext context, DatabaseHelper dbHelper) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        title: const Text('Hapus Semua Riwayat?'),
-        content: const Text(
-          'Semua catatan riwayat penyemprotan di database lokal HP akan dihapus permanen.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await dbHelper.clearAllLogs();
-              if (context.mounted) Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.errorColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-            child: const Text('Hapus'),
-          ),
-        ],
       ),
     );
   }

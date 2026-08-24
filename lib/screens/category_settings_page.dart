@@ -4,6 +4,7 @@ import '../services/mqtt_service.dart';
 import '../services/database_helper.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
+import '../utils/app_notification.dart';
 
 class CategorySettingsPage extends StatefulWidget {
   final String categoryId;
@@ -326,12 +327,7 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
             ),
             trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Data riwayat semprot berhasil diekspor!'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              AppNotification.show(context, 'Data riwayat semprot berhasil diekspor!');
             },
           ),
           Divider(height: 1, indent: 56, color: Colors.grey.shade800),
@@ -347,12 +343,7 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
             ),
             trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cache aplikasi berhasil dibersihkan!'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              AppNotification.show(context, 'Cache aplikasi berhasil dibersihkan!');
             },
           ),
           Divider(height: 1, indent: 56, color: Colors.grey.shade800),
@@ -566,12 +557,7 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
                 await dbHelper.clearAllLogs();
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Semua riwayat semprot telah dihapus.'),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
+                  AppNotification.show(context, 'Semua riwayat semprot telah dihapus.');
                 }
               },
               child: const Text('Hapus Semua', style: TextStyle(fontFamily: 'Utendo', color: Colors.white)),

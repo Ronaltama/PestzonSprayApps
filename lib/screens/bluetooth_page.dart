@@ -5,6 +5,7 @@ import '../services/mqtt_service.dart';
 import '../services/theme_provider.dart';
 import '../models/device_config.dart';
 import '../theme/theme.dart';
+import '../utils/app_notification.dart';
 
 class BluetoothPage extends StatefulWidget {
   const BluetoothPage({super.key});
@@ -37,24 +38,18 @@ class _BluetoothPageState extends State<BluetoothPage> {
       sprayDurationSeconds: _sprayDuration.toInt(),
     );
     btService.sendConfiguration(config);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Konfigurasi WiFi dikirim ke ESP32 via BLE!')),
-    );
+    AppNotification.show(context, 'Konfigurasi WiFi dikirim ke ESP32 via BLE!');
   }
 
   void _connectMqtt(MqttService mqttService) {
     final devId = _deviceIdController.text.trim();
     if (devId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kode Perangkat tidak boleh kosong!')),
-      );
+      AppNotification.show(context, 'Kode Perangkat tidak boleh kosong!', isError: true);
       return;
     }
     mqttService.setDeviceId(devId);
     mqttService.connect();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Menghubungkan ke Perangkat $devId via Cloud...')),
-    );
+    AppNotification.show(context, 'Menghubungkan ke Perangkat $devId via Cloud...');
   }
 
   @override

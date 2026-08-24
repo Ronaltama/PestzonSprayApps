@@ -6,6 +6,7 @@ import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
+import '../utils/app_notification.dart';
 
 class SchedulePage extends StatelessWidget {
   const SchedulePage({super.key});
@@ -235,6 +236,12 @@ class SchedulePage extends StatelessWidget {
                               onChanged: (val) async {
                                 final updated = sched.copyWith(isActive: val);
                                 await dbHelper.updateSchedule(updated);
+                                if (context.mounted) {
+                                  AppNotification.show(
+                                    context,
+                                    val ? 'Jadwal "${sched.title}" diaktifkan' : 'Jadwal "${sched.title}" dinonaktifkan',
+                                  );
+                                }
                               },
                             ),
                             IconButton(
@@ -242,6 +249,12 @@ class SchedulePage extends StatelessWidget {
                               onPressed: () async {
                                 if (sched.id != null) {
                                   await dbHelper.deleteSchedule(sched.id!);
+                                  if (context.mounted) {
+                                    AppNotification.show(
+                                      context,
+                                      'Jadwal "${sched.title}" dihapus',
+                                    );
+                                  }
                                 }
                               },
                             ),
