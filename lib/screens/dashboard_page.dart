@@ -57,16 +57,16 @@ class _DashboardPageState extends State<DashboardPage> {
               _buildHeroDayCard(context, status, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
-              // 3. SOLAR & BATTERY CARD (Sistem Daya Kebun)
+              // 3. STATISTIC BAR CHART (Moved directly below date card)
+              _buildStatisticChartCard(context, isDark),
+              const SizedBox(height: AppTheme.spacingLG),
+
+              // 4. SOLAR & BATTERY CARD (Sistem Daya Kebun)
               _buildSolarBatteryCard(context, status, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
-              // 4. PUMP CONTROL CARD
+              // 5. PUMP CONTROL CARD
               _buildPumpControlCard(context, btService, mqttService, dbHelper, status, isBleConnected, isMqttConnected, isDark),
-              const SizedBox(height: AppTheme.spacingXL),
-
-              // 5. STATISTIC BAR CHART
-              _buildStatisticChartCard(context, isDark),
               const SizedBox(height: 80),
             ],
           ),
