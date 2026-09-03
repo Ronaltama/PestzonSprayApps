@@ -7,6 +7,8 @@ import '../models/device_status.dart';
 import '../models/spray_log.dart';
 import '../models/spray_schedule.dart';
 import '../models/device_config.dart';
+import '../models/device_ack.dart';
+import '../models/daily_volume_stat.dart';
 import 'database_helper.dart';
 
 class BluetoothService extends ChangeNotifier {
@@ -39,6 +41,23 @@ class BluetoothService extends ChangeNotifier {
   DeviceStatus _deviceStatus = DeviceStatus();
   DeviceStatus get deviceStatus => _deviceStatus;
 
+  // ---- Request/Response streams (kontrak perangkat baru) ----
+  final _summaryStreamController = StreamController<DeviceStatus>.broadcast();
+  final _statsStreamController =
+      StreamController<List<DailyVolumeStat>>.broadcast();
+  final _schedulesStreamController =
+      StreamController<List<SpraySchedule>>.broadcast();
+  final _ackStreamController = StreamController<DeviceAck>.broadcast();
+
+  Stream<DeviceStatus> get summaryStream => _summaryStreamController.stream;
+  Stream<List<DailyVolumeStat>> get statsStream => _statsStreamController.stream;
+  Stream<List<SpraySchedule>> get schedulesStream =>
+      _schedulesStreamController.stream;
+  Stream<DeviceAck> get ackStream => _ackStreamController.stream;
+
+  // Buffer untuk transport newline-delimited JSON dari firmware BLE.
+  final StringBuffer _incomingBuffer = StringBuffer();
+
   Timer? _sprayTimer;
 
   // List of discovered devices dynamically from active live BLE scan
@@ -63,7 +82,10 @@ class BluetoothService extends ChangeNotifier {
   }
 
   void _initBluetoothStateListener() {
-    if (!kIsWeb) {
+    // Di lingkungan flutter test, plugin BLE tidak terdaftar (UnsupportedError)
+    // dan tidak ada adapter nyata — cukup tandai adapter sebagai on.
+    final isTestEnv = Platform.environment['FLUTTER_TEST'] == 'true';
+    if (!kIsWeb && !isTestEnv) {
       _adapterStateSubscription = fbp.FlutterBluePlus.adapterState.listen((state) {
         _adapterState = state;
         notifyListeners();
@@ -147,50 +169,89 @@ class BluetoothService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void connectToDevice(String deviceName, {required fbp.BluetoothDevice device}) async {
+  Future<void> connectToDevice(String deviceName,
+      {required fbp.BluetoothDevice device}) async {
+    // Tolak permintaan connect ganda (double-tap / UI belum update). Dua
+    // attempt paralel bisa menyebabkan race & state tidak konsisten.
+    if (_isConnecting) {
+      if (kDebugMode) print('BLE: abaikan connect, masih connecting...');
+      return;
+    }
     _isConnecting = true;
     _connectedDeviceName = 'Connecting...';
+    _connectedDevice = null;
+    _rxCharacteristic = null;
+    _txCharacteristic = null;
+    _isConnected = false;
+    _incomingBuffer.clear();
     notifyListeners();
 
     try {
       // Stop scan and let bluetooth controller settle
       await stopScan();
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 200));
 
-      // Instant direct connection (autoConnect: false)
-      await device.connect(timeout: const Duration(seconds: 5), autoConnect: false);
+      // Instant direct connection (autoConnect: false). Timeout lebih panjang
+      // (12s) karena ESP32 BLE kadang lambat init pada koneksi pertama setelah
+      // daya baru / nyala ulang.
+      await device.connect(
+        timeout: const Duration(seconds: 12),
+        autoConnect: false,
+      );
       _connectedDevice = device;
-      _connectedDeviceName = device.platformName.isNotEmpty ? device.platformName : device.remoteId.str;
+      _connectedDeviceName = device.platformName.isNotEmpty
+          ? device.platformName
+          : device.remoteId.str;
 
       // Monitor connection state
       _connectionSubscription?.cancel();
       _connectionSubscription = device.connectionState.listen((state) {
-        if (state == fbp.BluetoothConnectionState.disconnected) {
+        if (!_isConnecting &&
+            state == fbp.BluetoothConnectionState.disconnected) {
           _onDisconnected();
         }
       });
 
-      // Discover services
-      List<fbp.BluetoothService> services = await device.discoverServices();
-      _setupCharacteristics(services);
+      // Discover services; pastikan selesai sebelum dianggap connect.
+      try {
+        final services = await device.discoverServices();
+        await _setupCharacteristics(services);
+      } catch (e) {
+        if (kDebugMode) print('BLE: gagal discover services: $e');
+        await device.disconnect();
+        _onDisconnected(
+            customMessage: 'Gagal: Karakteristik BLE tidak ditemukan');
+        return;
+      }
+
+      if (_rxCharacteristic == null || _txCharacteristic == null) {
+        // Tidak ada karakteristik RX/TX yang cocok — bukan perangkat ESP yang
+        // dimaksud, atau firmware tak lengkap.
+        await device.disconnect();
+        _onDisconnected(
+            customMessage: 'Perangkat tidak kompatibel (GATT tidak ditemukan)');
+        return;
+      }
 
       _isConnected = true;
       _isConnecting = false;
+      // Nilai baterai/tegangan/volume tidak di-set dummy di sini: data asli
+      // diminta via request `get_summary` (DeviceRepository.refreshAll saat
+      // connect) dan diisi dari response ESP.
       _deviceStatus = _deviceStatus.copyWith(
         connectionState: 'Connected (BLE)',
-        batteryPercentage: 90,
-        batteryVoltage: 4.15,
-        isSolarCharging: true,
       );
       notifyListeners();
       return;
     } catch (e) {
-      if (kDebugMode) {
-        print('Failed to connect to BLE device: $e');
-      }
+      if (kDebugMode) print('Failed to connect to BLE device: $e');
       final errStr = e.toString();
       if (errStr.contains('ProfileUnavailable') || errStr.contains('BREDR')) {
         _onDisconnected(customMessage: 'Gagal: Gunakan Firmware ESP32 BLE');
+      } else if (errStr.toLowerCase().contains('timeout') ||
+          errStr.toLowerCase().contains('timed out')) {
+        _onDisconnected(
+            customMessage: 'Gagal Terhubung (timeout). Coba lagi / cek jarak & daya ESP.');
       } else {
         _onDisconnected(customMessage: 'Gagal Terhubung');
       }
@@ -198,7 +259,7 @@ class BluetoothService extends ChangeNotifier {
     }
   }
 
-  void _setupCharacteristics(List<fbp.BluetoothService> services) async {
+  Future<void> _setupCharacteristics(List<fbp.BluetoothService> services) async {
     _rxCharacteristic = null;
     _txCharacteristic = null;
 
@@ -227,37 +288,164 @@ class BluetoothService extends ChangeNotifier {
     }
   }
 
+  /// Terima data dari notifikasi BLE.
+  ///
+  /// Firmware baru mengirim JSON newline-delimited (`\n` di akhir pesan),
+  /// sehingga pesan yang terpecah di batas MTU tetap utuh. Pesan lama (tanpa
+  /// newline, format `{battery, voltage, solar, pump}`) tetap ditoleransi
+  /// selama transisi: jika buffer sudah berupa JSON utuh, langsung diproses.
   void _handleIncomingData(List<int> data) {
     try {
-      final message = utf8.decode(data);
-      if (kDebugMode) print('BLE Received: $message');
-      
-      final json = jsonDecode(message);
-      if (json is Map<String, dynamic>) {
-        _deviceStatus = _deviceStatus.copyWith(
-          batteryPercentage: json['battery'] ?? _deviceStatus.batteryPercentage,
-          batteryVoltage: (json['voltage'] as num?)?.toDouble() ?? _deviceStatus.batteryVoltage,
-          isSolarCharging: json['solar'] ?? _deviceStatus.isSolarCharging,
-          isPumpRunning: json['pump'] ?? _deviceStatus.isPumpRunning,
-        );
-        notifyListeners();
+      _incomingBuffer.write(utf8.decode(data));
+      var buffered = _incomingBuffer.toString();
+
+      // Proses semua baris lengkap (newline-delimited).
+      if (buffered.contains('\n')) {
+        final parts = buffered.split('\n');
+        _incomingBuffer.clear();
+        buffered = parts.removeLast(); // sisanya mungkin belum lengkap
+        _incomingBuffer.write(buffered);
+        for (final line in parts) {
+          final trimmed = line.trim();
+          if (trimmed.isNotEmpty) {
+            _tryProcessJson(trimmed);
+          }
+        }
+      }
+
+      // Fallback: tanpa newline tapi sudah JSON utuh (format lama / tanpa
+      // terminator). Kalau belum utuh, jsonDecode gagal dan byte dibiarkan
+      // menunggu kelanjutannya.
+      final remainder = _incomingBuffer.toString().trim();
+      if (remainder.isNotEmpty) {
+        final decoded = _tryDecode(remainder);
+        if (decoded != null) {
+          _incomingBuffer.clear();
+          _processJson(decoded);
+        }
       }
     } catch (_) {
-      // Non-JSON or raw text notification
+      // Byte tidak valid UTF-8 — abaikan.
     }
   }
 
-  void _sendBleMessage(Map<String, dynamic> payload) async {
-    if (_rxCharacteristic != null) {
-      try {
-        final jsonStr = jsonEncode(payload);
-        final bytes = utf8.encode(jsonStr);
-        await _rxCharacteristic!.write(bytes, withoutResponse: _rxCharacteristic!.properties.writeWithoutResponse);
-        if (kDebugMode) print('Sent BLE bytes: $jsonStr');
-      } catch (e) {
-        if (kDebugMode) print('Error writing BLE characteristic: $e');
-      }
+  Map<String, dynamic>? _tryDecode(String text) {
+    try {
+      final decoded = jsonDecode(text);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
     }
+  }
+
+  void _tryProcessJson(String line) {
+    final decoded = _tryDecode(line);
+    if (decoded != null) {
+      _processJson(decoded);
+    }
+  }
+
+  void _processJson(Map<String, dynamic> json) {
+    final t = json['t'];
+    if (t is String) {
+      // Envelope kontrak perangkat baru.
+      switch (t) {
+        case 'summary':
+          final status = DeviceStatus.fromJson(json)
+              .copyWith(connectionState: 'Connected (BLE)');
+          _deviceStatus = status;
+          _summaryStreamController.add(status);
+          notifyListeners();
+        case 'stats':
+          _statsStreamController
+              .add(DailyVolumeStat.listFromStatsPayload(json));
+        case 'schedules':
+          _schedulesStreamController.add(SpraySchedule.listFromDevicePayload(
+              json['schedules'] as List? ?? const []));
+        case 'ack':
+          _ackStreamController.add(DeviceAck.fromJson(json));
+        default:
+          if (kDebugMode) print('BLE unhandled envelope type: $t');
+      }
+      return;
+    }
+
+    // Format lama (push status singkat tanpa envelope).
+    _deviceStatus = _deviceStatus.copyWith(
+      batteryPercentage:
+          (json['battery'] as num?)?.toInt() ?? _deviceStatus.batteryPercentage,
+      batteryVoltage: (json['voltage'] as num?)?.toDouble() ??
+          _deviceStatus.batteryVoltage,
+      isSolarCharging: json['solar'] == true || json['solar'] == 1
+          ? true
+          : (json['solar'] == false || json['solar'] == 0
+              ? false
+              : _deviceStatus.isSolarCharging),
+      isPumpRunning: json['pump'] == true || json['pump'] == 1
+          ? true
+          : (json['pump'] == false || json['pump'] == 0
+              ? false
+              : _deviceStatus.isPumpRunning),
+    );
+    notifyListeners();
+  }
+
+  Future<void> _writeRaw(String jsonStr) async {
+    if (_rxCharacteristic == null) return;
+    if (!_isConnected) {
+      if (kDebugMode) print('Skip BLE write (tidak terhubung): $jsonStr');
+      return;
+    }
+    try {
+      final bytes = utf8.encode(jsonStr);
+      await _rxCharacteristic!.write(
+        bytes,
+        withoutResponse: _rxCharacteristic!.properties.writeWithoutResponse,
+      );
+      if (kDebugMode) print('Sent BLE bytes: $jsonStr');
+    } catch (e) {
+      if (kDebugMode) print('Error writing BLE characteristic: $e');
+    }
+  }
+
+  void _sendBleMessage(Map<String, dynamic> payload) {
+    _writeRaw(jsonEncode(payload));
+  }
+
+  /// Kirim envelope kontrak perangkat baru (diakhiri `\n` sesuai framing BLE).
+  void _sendBleEnvelope(Map<String, dynamic> payload) {
+    _writeRaw('${jsonEncode(payload)}\n');
+  }
+
+  // ---- Request/Response (kontrak perangkat baru) ----
+
+  /// Minta ringkasan hari ini dari ESP (volume, sesi, baterai, dll).
+  void requestSummary() {
+    _sendBleEnvelope({'v': 1, 't': 'get_summary'});
+  }
+
+  /// Minta statistik volume per hari pada rentang tanggal (inklusif).
+  void requestStats({required DateTime from, required DateTime to}) {
+    _sendBleEnvelope({
+      'v': 1,
+      't': 'get_stats',
+      'from': DailyVolumeStat.formatDate(from),
+      'to': DailyVolumeStat.formatDate(to),
+    });
+  }
+
+  /// Minta daftar jadwal semprot yang tersimpan di ESP.
+  void requestSchedules() {
+    _sendBleEnvelope({'v': 1, 't': 'get_schedules'});
+  }
+
+  /// Tulis daftar jadwal penuh ke ESP (tambah/hapus/nyalakan/matikan).
+  void pushSchedules(List<SpraySchedule> schedules) {
+    _sendBleEnvelope({
+      'v': 1,
+      't': 'set_schedules',
+      'schedules': schedules.map((s) => s.toDeviceJson()).toList(),
+    });
   }
 
   void _onDisconnected({String customMessage = 'Tidak Terhubung'}) {
@@ -266,6 +454,7 @@ class BluetoothService extends ChangeNotifier {
     _connectedDevice = null;
     _rxCharacteristic = null;
     _txCharacteristic = null;
+    _incomingBuffer.clear();
     _isConnected = false;
     _isConnecting = false;
     _connectedDeviceName = customMessage;
@@ -312,21 +501,19 @@ class BluetoothService extends ChangeNotifier {
       remaining--;
       if (remaining <= 0) {
         timer.cancel();
-        
-        // Pump stops
+
+        // Pump berhenti. Counter total volume/sesi TIDAK dihitung lokal lagi:
+        // nilainya milik ESP dan ditarik via request `get_summary` setelah
+        // semprot selesai (DeviceRepository memicu refreshSummary).
         final estimatedVolumeMl = durationSeconds * 5.0; // 5 ml/detik debit pompa misting
-        final newTotalSesi = _deviceStatus.totalSesiToday + 1;
-        final newTotalVolume = _deviceStatus.totalVolumeTodayMl + estimatedVolumeMl;
 
         _deviceStatus = _deviceStatus.copyWith(
           isPumpRunning: false,
           activeDurationSeconds: 0,
-          totalSesiToday: newTotalSesi,
-          totalVolumeTodayMl: newTotalVolume,
         );
         notifyListeners();
 
-        // SIMPAN KE DATABASE LOKAL HP (SQLite)
+        // SIMPAN KE DATABASE LOKAL HP (SQLite) untuk riwayat
         final log = SprayLog(
           timestamp: DateTime.now(),
           durationSeconds: durationSeconds,

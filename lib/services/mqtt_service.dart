@@ -7,6 +7,8 @@ import '../models/device_status.dart';
 import '../models/spray_log.dart';
 import '../models/spray_schedule.dart';
 import '../models/device_config.dart';
+import '../models/device_ack.dart';
+import '../models/daily_volume_stat.dart';
 import 'database_helper.dart';
 
 class MqttService extends ChangeNotifier {
@@ -36,11 +38,27 @@ class MqttService extends ChangeNotifier {
   final _statusStreamController = StreamController<DeviceStatus>.broadcast();
   Stream<DeviceStatus> get statusStream => _statusStreamController.stream;
 
+  // ---- Request/Response streams (kontrak perangkat baru) ----
+  final _summaryStreamController = StreamController<DeviceStatus>.broadcast();
+  final _statsStreamController =
+      StreamController<List<DailyVolumeStat>>.broadcast();
+  final _schedulesStreamController =
+      StreamController<List<SpraySchedule>>.broadcast();
+  final _ackStreamController = StreamController<DeviceAck>.broadcast();
+
+  Stream<DeviceStatus> get summaryStream => _summaryStreamController.stream;
+  Stream<List<DailyVolumeStat>> get statsStream => _statsStreamController.stream;
+  Stream<List<SpraySchedule>> get schedulesStream =>
+      _schedulesStreamController.stream;
+  Stream<DeviceAck> get ackStream => _ackStreamController.stream;
+
   // Dynamic Topics
   String get topicStatus => 'sprayer/$_deviceId/status';
   String get topicCommand => 'sprayer/$_deviceId/command';
   String get topicConfig => 'sprayer/$_deviceId/config';
   String get topicLog => 'sprayer/$_deviceId/log';
+  String get topicRequest => 'sprayer/$_deviceId/request';
+  String get topicResponse => 'sprayer/$_deviceId/response';
 
   // Untuk reconnection logic
   Timer? _reconnectTimer;
@@ -72,6 +90,7 @@ class MqttService extends ChangeNotifier {
       // Re-subscribe to new topics
       client.unsubscribe('sprayer/+/status');
       client.unsubscribe('sprayer/+/log');
+      client.unsubscribe('sprayer/+/response');
       _subscribeToTopics();
     }
   }
@@ -114,7 +133,8 @@ class MqttService extends ChangeNotifier {
     if (!_isConnected) return;
     client.subscribe(topicStatus, MqttQos.atLeastOnce);
     client.subscribe(topicLog, MqttQos.atLeastOnce);
-    debugPrint('Subscribed to $topicStatus & $topicLog');
+    client.subscribe(topicResponse, MqttQos.atLeastOnce);
+    debugPrint('Subscribed to $topicStatus, $topicLog & $topicResponse');
   }
 
   void _onConnected() {
@@ -189,6 +209,41 @@ class MqttService extends ChangeNotifier {
       } catch (e) {
         debugPrint('JSON parse error on log: $e');
       }
+    } else if (topic == topicResponse) {
+      try {
+        final jsonData = jsonDecode(payload);
+        if (jsonData is Map<String, dynamic>) {
+          _handleEnvelope(jsonData);
+        }
+      } catch (e) {
+        debugPrint('JSON parse error on response: $e');
+      }
+    }
+  }
+
+  /// Proses envelope request/response sesuai kontrak perangkat.
+  void _handleEnvelope(Map<String, dynamic> jsonData) {
+    final t = jsonData['t'];
+    switch (t) {
+      case 'summary':
+        final status = DeviceStatus.fromJson(jsonData)
+            .copyWith(connectionState: 'Connected (MQTT)');
+        _latestStatus = status;
+        _lastStatusTime = DateTime.now();
+        _summaryStreamController.add(status);
+        _statusStreamController.add(status);
+        notifyListeners();
+      case 'stats':
+        final days = DailyVolumeStat.listFromStatsPayload(jsonData);
+        _statsStreamController.add(days);
+      case 'schedules':
+        final schedules =
+            SpraySchedule.listFromDevicePayload(jsonData['schedules'] as List? ?? const []);
+        _schedulesStreamController.add(schedules);
+      case 'ack':
+        _ackStreamController.add(DeviceAck.fromJson(jsonData));
+      default:
+        debugPrint('Unhandled envelope type: $t');
     }
   }
 
@@ -240,6 +295,41 @@ class MqttService extends ChangeNotifier {
     };
     publishCommand(topicConfig, payload);
     debugPrint('Schedules synced via MQTT');
+  }
+
+  // ---- Request/Response (kontrak perangkat baru) ----
+
+  void _publishRequest(Map<String, dynamic> payload) {
+    publishCommand(topicRequest, payload);
+  }
+
+  /// Minta ringkasan hari ini dari ESP (volume, sesi, baterai, dll).
+  void requestSummary() {
+    _publishRequest({'v': 1, 't': 'get_summary'});
+  }
+
+  /// Minta statistik volume per hari pada rentang tanggal (inklusif).
+  void requestStats({required DateTime from, required DateTime to}) {
+    _publishRequest({
+      'v': 1,
+      't': 'get_stats',
+      'from': DailyVolumeStat.formatDate(from),
+      'to': DailyVolumeStat.formatDate(to),
+    });
+  }
+
+  /// Minta daftar jadwal semprot yang tersimpan di ESP.
+  void requestSchedules() {
+    _publishRequest({'v': 1, 't': 'get_schedules'});
+  }
+
+  /// Tulis daftar jadwal penuh ke ESP (tambah/hapus/nyalakan/matikan).
+  void pushSchedules(List<SpraySchedule> schedules) {
+    _publishRequest({
+      'v': 1,
+      't': 'set_schedules',
+      'schedules': schedules.map((s) => s.toDeviceJson()).toList(),
+    });
   }
 
   void disconnect() {

@@ -43,6 +43,39 @@ class SpraySchedule {
     );
   }
 
+  /// Serialisasi untuk dikirim ke perangkat ESP (kontrak `set_schedules` /
+  /// response `schedules`). Kunci & satuan mengikuti kontrak perangkat,
+  /// bukan skema tabel SQLite lokal.
+  Map<String, dynamic> toDeviceJson() {
+    return {
+      'id': id,
+      'title': title,
+      'hour': hour,
+      'minute': minute,
+      'duration': durationSeconds,
+      'active': isActive ? 1 : 0,
+    };
+  }
+
+  factory SpraySchedule.fromDeviceJson(Map<String, dynamic> map) {
+    return SpraySchedule(
+      id: (map['id'] as num?)?.toInt(),
+      title: map['title'] as String? ?? 'Penyemprotan',
+      hour: (map['hour'] as num).toInt(),
+      minute: (map['minute'] as num).toInt(),
+      durationSeconds: (map['duration'] as num?)?.toInt() ?? 0,
+      isActive: map['active'] == 1 || map['active'] == true,
+    );
+  }
+
+  /// Parse daftar jadwal dari payload response `{"t":"schedules","schedules":[...]}`.
+  static List<SpraySchedule> listFromDevicePayload(List<dynamic> items) {
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(SpraySchedule.fromDeviceJson)
+        .toList();
+  }
+
   SpraySchedule copyWith({
     int? id,
     String? title,

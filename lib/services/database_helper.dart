@@ -134,4 +134,21 @@ class DatabaseHelper extends ChangeNotifier {
     notifyListeners();
     return rows;
   }
+
+  /// Ganti seluruh daftar jadwal lokal dengan daftar dari perangkat
+  /// (id mengikuti id ESP). Dipakai saat menarik jadwal dari ESP.
+  Future<void> replaceAllSchedules(List<SpraySchedule> schedules) async {
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      await txn.delete('spray_schedules');
+      for (final s in schedules) {
+        final row = s.toMap();
+        if (s.id == null) {
+          row.remove('id');
+        }
+        await txn.insert('spray_schedules', row);
+      }
+    });
+    notifyListeners();
+  }
 }

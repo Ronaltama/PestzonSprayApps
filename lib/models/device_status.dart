@@ -21,14 +21,14 @@ class DeviceStatus {
 
   factory DeviceStatus.fromJson(Map<String, dynamic> json) {
     return DeviceStatus(
-      batteryPercentage: (json['battery'] ?? 85) as int,
-      batteryVoltage: (json['voltage'] ?? 4.1).toDouble(),
-      isSolarCharging: json['isSolar'] ?? true,
-      isPumpRunning: json['isPumpRunning'] ?? false,
-      activeDurationSeconds: json['durationSec'] ?? 0,
-      totalSesiToday: json['totalSesi'] ?? 0,
-      totalVolumeTodayMl: (json['totalVolume'] ?? 0.0).toDouble(),
-      connectionState: json['connState'] ?? 'Disconnected',
+      batteryPercentage: (json['battery'] as num?)?.toInt() ?? 85,
+      batteryVoltage: (json['voltage'] as num?)?.toDouble() ?? 4.1,
+      isSolarCharging: json['isSolar'] == true || json['isSolar'] == 1,
+      isPumpRunning: json['isPumpRunning'] == true || json['isPumpRunning'] == 1,
+      activeDurationSeconds: (json['durationSec'] as num?)?.toInt() ?? 0,
+      totalSesiToday: (json['totalSesi'] as num?)?.toInt() ?? 0,
+      totalVolumeTodayMl: (json['totalVolume'] as num?)?.toDouble() ?? 0.0,
+      connectionState: json['connState'] as String? ?? 'Disconnected',
     );
   }
 

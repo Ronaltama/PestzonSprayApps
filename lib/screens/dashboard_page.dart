@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/database_helper.dart';
+import '../services/device_repository.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
 import '../models/spray_log.dart';
@@ -30,17 +31,15 @@ class _DashboardPageState extends State<DashboardPage> {
     final mqttService = Provider.of<MqttService>(context);
     final dbHelper = Provider.of<DatabaseHelper>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final deviceRepo = Provider.of<DeviceRepository>(context);
 
     final isBleConnected = btService.isConnected;
     final isMqttConnected = mqttService.isConnected && mqttService.isEspOnline;
     final isDark = themeProvider.isDarkMode;
 
-    // Fallback logic: Prefer BLE if connected, else MQTT
-    final status = isBleConnected
-        ? btService.deviceStatus
-        : (isMqttConnected && mqttService.latestStatus != null
-            ? mqttService.latestStatus!
-            : btService.deviceStatus);
+    // Status berasal dari perangkat via repositori (BLE dulu, fallback MQTT),
+    // bukan estimasi lokal.
+    final status = deviceRepo.summary;
 
     return Scaffold(
       backgroundColor: isDark ? ThemeProvider.darkBgColor : const Color(0xFFF6F8F6),
@@ -62,7 +61,13 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: AppTheme.spacingLG),
 
               // 3. STATISTIC BAR CHART (Moved directly below date card)
-              _buildStatisticChartCard(context, dbHelper, status, isDark),
+              _buildStatisticChartCard(
+                context,
+                dbHelper,
+                status,
+                deviceRepo,
+                isDark,
+              ),
               const SizedBox(height: AppTheme.spacingLG),
 
               // 4. SOLAR & BATTERY CARD (Sistem Daya Kebun)
@@ -256,18 +261,29 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(width: 8),
         IconButton(
+          tooltip: 'Sinkronkan data dari alat',
           onPressed: () async {
-            final schedules = await dbHelper.getAllSchedules();
-            if (isBle) {
-              btService.syncSchedules(schedules);
+            final repo =
+                Provider.of<DeviceRepository>(context, listen: false);
+            if (!repo.isConnected) {
               if (context.mounted) {
-                AppNotification.show(context, 'Jadwal tersinkron via BLE');
+                AppNotification.show(
+                  context,
+                  'Perangkat tidak terhubung. Silakan buka menu Device.',
+                  isError: true,
+                );
               }
-            } else if (isMqtt) {
-              mqttService.syncSchedules(schedules);
-              if (context.mounted) {
-                AppNotification.show(context, 'Jadwal tersinkron via MQTT');
-              }
+              return;
+            }
+            final ok = await repo.refreshAll();
+            if (context.mounted) {
+              AppNotification.show(
+                context,
+                ok
+                    ? 'Data disinkronkan dari alat'
+                    : 'Alat tidak merespons. Coba lagi.',
+                isError: !ok,
+              );
             }
           },
           icon: Container(
@@ -277,7 +293,20 @@ class _DashboardPageState extends State<DashboardPage> {
               shape: BoxShape.circle,
               boxShadow: isDark ? [] : AppTheme.shadowSM,
             ),
-            child: Icon(Icons.sync, size: 20, color: isDark ? primaryAccent : AppTheme.textDark),
+            child: Provider.of<DeviceRepository>(context).isRefreshing
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: primaryAccent,
+                    ),
+                  )
+                : Icon(
+                    Icons.sync,
+                    size: 20,
+                    color: isDark ? primaryAccent : AppTheme.textDark,
+                  ),
           ),
         ),
       ],
@@ -589,6 +618,7 @@ class _DashboardPageState extends State<DashboardPage> {
     BuildContext context,
     DatabaseHelper dbHelper,
     dynamic status,
+    DeviceRepository repo,
     bool isDark,
   ) {
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
@@ -616,6 +646,23 @@ class _DashboardPageState extends State<DashboardPage> {
             final dayIdx = log.timestamp.weekday - 1;
             if (dayIdx >= 0 && dayIdx < 7) {
               volumes[dayIdx] += log.volumeMl;
+            }
+          }
+        }
+
+        // Sumber utama: statistik per hari yang disimpan di perangkat ESP
+        // (cache hasil pull, tetap dipakai walau offline). Kalau belum pernah
+        // ditarik (null), grafik memakai log SQLite lokal di atas.
+        final deviceStats = repo.stats;
+        if (deviceStats != null && deviceStats.isNotEmpty) {
+          volumes.fillRange(0, 7, 0.0);
+          for (final stat in deviceStats) {
+            final date = DateTime(stat.date.year, stat.date.month, stat.date.day);
+            if (!date.isBefore(mondayStart) && date.isBefore(sundayEnd)) {
+              final dayIdx = stat.weekdayIndex;
+              if (dayIdx >= 0 && dayIdx < 7) {
+                volumes[dayIdx] = stat.volumeMl;
+              }
             }
           }
         }

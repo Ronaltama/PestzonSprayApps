@@ -2,17 +2,122 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/spray_schedule.dart';
 import '../services/database_helper.dart';
+import '../services/device_repository.dart';
 import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
 import '../utils/app_notification.dart';
 
-class SchedulePage extends StatelessWidget {
+class SchedulePage extends StatefulWidget {
   const SchedulePage({super.key});
 
   @override
+  State<SchedulePage> createState() => _SchedulePageState();
+}
+
+class _SchedulePageState extends State<SchedulePage> {
+  DatabaseHelper? _db;
+  DeviceRepository? _repo;
+
+  bool _lastConnected = false;
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _db = context.read<DatabaseHelper>();
+    _repo = context.read<DeviceRepository>();
+    _lastConnected = _repo!.isConnected;
+    _repo!.addListener(_onRepoChanged);
+    // Kalau app dibuka saat perangkat sudah terhubung, tarik jadwal langsung.
+    if (_repo!.isConnected) {
+      _pullFromDevice();
+    }
+  }
+
+  @override
+  void dispose() {
+    _repo?.removeListener(_onRepoChanged);
+    super.dispose();
+  }
+
+  void _onRepoChanged() {
+    final connected = _repo!.isConnected;
+    if (connected && !_lastConnected) {
+      _lastConnected = true;
+      _pullFromDevice();
+    } else if (!connected && _lastConnected) {
+      _lastConnected = false;
+    }
+  }
+
+  /// Notifikasi hanya ditampilkan jika halaman ini sedang terlihat
+  /// (IndexedStack menyembunyikan halaman lain dengan TickerMode).
+  void _notify(String message, {bool isError = false}) {
+    if (!mounted || !TickerMode.of(context)) return;
+    AppNotification.show(context, message, isError: isError);
+  }
+
+  /// Tarik jadwal dari ESP saat connect dan jadikan daftar alat sebagai
+  /// sumber kebenaran (menimpa DB lokal).
+  Future<void> _pullFromDevice() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    final pulled = await _repo!.pullSchedules();
+    if (!mounted) return;
+    setState(() => _syncing = false);
+
+    if (pulled == null) {
+      _notify('Gagal menarik jadwal dari alat (tidak ada respon).',
+          isError: true);
+      return;
+    }
+
+    if (pulled.isEmpty) {
+      // ESP kosong (mis. perangkat baru): dorong jadwal bawaan lokal sekali
+      // ke alat. Setelah itu daftar kosong dari alat tetap dihormati.
+      final local = await _db!.getAllSchedules();
+      if (!mounted) return;
+      if (local.isNotEmpty) {
+        await _repo!.pushSchedules(local);
+      }
+      return;
+    }
+
+    await _db!.replaceAllSchedules(pulled);
+    if (!mounted) return;
+    _notify('Jadwal disinkronkan dari alat (${pulled.length} jadwal).');
+  }
+
+  /// Kirim daftar jadwal lokal (DB) ke alat. Dipakai untuk kirim ulang manual
+  /// dan setiap perubahan lokal (tambah/hapus/nyalakan/matikan).
+  Future<void> _pushLocalToDevice(String successMessage) async {
+    if (!_repo!.isConnected) {
+      _notify('Alat tidak terhubung. Perubahan tersimpan lokal saja.',
+          isError: true);
+      return;
+    }
+    final schedules = await _db!.getAllSchedules();
+    final ack = await _repo!.pushSchedules(schedules);
+    if (!mounted) return;
+    if (ack == null) {
+      _notify(
+          'Gagal: alat tidak merespons (timeout). Perubahan tersimpan lokal.',
+          isError: true);
+      return;
+    }
+    if (!ack.ok) {
+      _notify('Gagal disimpan di alat${ack.error != null ? ': ${ack.error}' : ''}.',
+          isError: true);
+      return;
+    }
+    _notify(successMessage);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // watch: rebuild saat DB lokal berubah / repo menarik data baru.
     final dbHelper = Provider.of<DatabaseHelper>(context);
     final btService = Provider.of<BluetoothService>(context);
     final mqttService = Provider.of<MqttService>(context);
@@ -22,6 +127,9 @@ class SchedulePage extends StatelessWidget {
     final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
     final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
+
+    final isBle = btService.isConnected;
+    final isMqtt = mqttService.isConnected;
 
     return Scaffold(
       backgroundColor: isDark ? ThemeProvider.darkBgColor : const Color(0xFFF6F8F6),
@@ -73,31 +181,10 @@ class SchedulePage extends StatelessWidget {
                   Row(
                     children: [
                       IconButton(
-                        tooltip: 'Sinkronisasi Jadwal ke Alat',
-                        onPressed: () async {
-                          final schedules = await dbHelper.getAllSchedules();
-                          if (btService.isConnected) {
-                            btService.syncSchedules(schedules);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Sinkronisasi Jadwal (BLE) Berhasil')),
-                              );
-                            }
-                          } else if (mqttService.isConnected) {
-                            mqttService.syncSchedules(schedules);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Sinkronisasi Jadwal (MQTT) Berhasil')),
-                              );
-                            }
-                          } else {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Gagal! Tidak ada koneksi ke Alat.')),
-                              );
-                            }
-                          }
-                        },
+                        tooltip: 'Kirim ulang jadwal ke alat',
+                        onPressed: (_syncing || !isBle && !isMqtt)
+                            ? null
+                            : () => _pushLocalToDevice('Jadwal berhasil dikirim ke alat'),
                         icon: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
@@ -105,12 +192,21 @@ class SchedulePage extends StatelessWidget {
                             shape: BoxShape.circle,
                             boxShadow: isDark ? [] : AppTheme.shadowSM,
                           ),
-                          child: Icon(Icons.sync, size: 20, color: isDark ? primaryAccent : AppTheme.textDark),
+                          child: _syncing
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: primaryAccent,
+                                  ),
+                                )
+                              : Icon(Icons.sync, size: 20, color: isDark ? primaryAccent : AppTheme.textDark),
                         ),
                       ),
                       const SizedBox(width: 4),
                       IconButton(
-                        onPressed: () => _showAddScheduleDialog(context, dbHelper, isDark, primaryAccent),
+                        onPressed: () => _showAddScheduleDialog(isDark: isDark, primaryAccent: primaryAccent),
                         icon: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
@@ -162,7 +258,7 @@ class SchedulePage extends StatelessWidget {
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton.icon(
-                              onPressed: () => _showAddScheduleDialog(context, dbHelper, isDark, primaryAccent),
+                              onPressed: () => _showAddScheduleDialog(isDark: isDark, primaryAccent: primaryAccent),
                               icon: Icon(Icons.add, color: isDark ? ThemeProvider.blackColor : Colors.white),
                               label: Text('Tambah Jadwal Baru', style: TextStyle(fontFamily: 'Utendo', color: isDark ? ThemeProvider.blackColor : Colors.white)),
                               style: ElevatedButton.styleFrom(
@@ -236,12 +332,11 @@ class SchedulePage extends StatelessWidget {
                               onChanged: (val) async {
                                 final updated = sched.copyWith(isActive: val);
                                 await dbHelper.updateSchedule(updated);
-                                if (context.mounted) {
-                                  AppNotification.show(
-                                    context,
-                                    val ? 'Jadwal "${sched.title}" diaktifkan' : 'Jadwal "${sched.title}" dinonaktifkan',
-                                  );
-                                }
+                                await _pushLocalToDevice(
+                                  val
+                                      ? 'Jadwal "${sched.title}" diaktifkan & disimpan di alat'
+                                      : 'Jadwal "${sched.title}" dinonaktifkan & disimpan di alat',
+                                );
                               },
                             ),
                             IconButton(
@@ -249,12 +344,7 @@ class SchedulePage extends StatelessWidget {
                               onPressed: () async {
                                 if (sched.id != null) {
                                   await dbHelper.deleteSchedule(sched.id!);
-                                  if (context.mounted) {
-                                    AppNotification.show(
-                                      context,
-                                      'Jadwal "${sched.title}" dihapus',
-                                    );
-                                  }
+                                  await _pushLocalToDevice('Jadwal "${sched.title}" dihapus dari alat');
                                 }
                               },
                             ),
@@ -272,14 +362,14 @@ class SchedulePage extends StatelessWidget {
     );
   }
 
-  void _showAddScheduleDialog(BuildContext context, DatabaseHelper dbHelper, bool isDark, Color primaryAccent) {
+  void _showAddScheduleDialog({required bool isDark, required Color primaryAccent}) {
     final titleController = TextEditingController(text: 'Semprot Otomatis');
     TimeOfDay selectedTime = TimeOfDay.now();
     double durationSeconds = 30.0;
 
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -338,7 +428,7 @@ class SchedulePage extends StatelessWidget {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogContext),
                   child: const Text('Batal', style: TextStyle(fontFamily: 'Utendo', color: Colors.grey)),
                 ),
                 ElevatedButton(
@@ -347,19 +437,20 @@ class SchedulePage extends StatelessWidget {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   onPressed: () async {
-                    if (titleController.text.trim().isNotEmpty) {
-                      final newSched = SpraySchedule(
-                        title: titleController.text.trim(),
-                        hour: selectedTime.hour,
-                        minute: selectedTime.minute,
-                        durationSeconds: durationSeconds.toInt(),
-                        isActive: true,
-                      );
-                      await dbHelper.insertSchedule(newSched);
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                      }
+                    final title = titleController.text.trim();
+                    if (title.isEmpty) return;
+                    final newSched = SpraySchedule(
+                      title: title,
+                      hour: selectedTime.hour,
+                      minute: selectedTime.minute,
+                      durationSeconds: durationSeconds.toInt(),
+                      isActive: true,
+                    );
+                    await _db!.insertSchedule(newSched);
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
                     }
+                    await _pushLocalToDevice('Jadwal "$title" ditambahkan & disimpan di alat');
                   },
                   child: Text('Simpan', style: TextStyle(fontFamily: 'Utendo', color: isDark ? ThemeProvider.blackColor : Colors.white)),
                 ),
