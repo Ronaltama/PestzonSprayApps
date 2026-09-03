@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Aplikasi membutuhkan akses Bluetooth untuk memindai dan terhubung ke perangkat ESP32.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Aplikasi membutuhkan akses Bluetooth untuk terhubung ke perangkat ESP32.</string>
 </dict>
 </plist>

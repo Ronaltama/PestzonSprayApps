@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
 import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/theme_provider.dart';
@@ -218,6 +219,51 @@ class _BluetoothPageState extends State<BluetoothPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (!btService.isBluetoothOn)
+          Container(
+            margin: const EdgeInsets.only(bottom: AppTheme.spacingMD),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF451A03) : const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? const Color(0xFFF59E0B) : const Color(0xFFD97706)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.bluetooth_disabled, color: isDark ? const Color(0xFFF59E0B) : const Color(0xFFD97706), size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Bluetooth HP Anda mati. Aktifkan untuk memindai.',
+                    style: TextStyle(
+                      fontFamily: 'Utendo',
+                      color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => btService.turnOnBluetooth(),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Nyalakan',
+                    style: TextStyle(
+                      fontFamily: 'Utendo',
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? const Color(0xFFF59E0B) : const Color(0xFFB45309),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
@@ -321,39 +367,91 @@ class _BluetoothPageState extends State<BluetoothPage> {
         ),
         const SizedBox(height: 12),
 
-        if (btService.scanResults.isEmpty && btService.mockFoundDevices.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Center(
-              child: Text(
-                'Tekan "Pindai BLE" untuk mencari ESP32 di dekat Anda.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontFamily: 'Utendo', color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13),
+        // Dynamic combining of active system devices (ready to connect) and live scan results
+        () {
+          final List<dynamic> allDevices = [];
+
+          // 1. Add active unbonded / ready-to-connect system devices
+          for (var sysDev in btService.systemDevices) {
+            allDevices.add(sysDev);
+          }
+
+          // 2. Add active live BLE scan results (avoiding duplicates)
+          for (var sr in btService.scanResults) {
+            bool alreadyAdded = allDevices.any((d) {
+              if (d is fbp.BluetoothDevice) {
+                return d.remoteId == sr.device.remoteId;
+              }
+              if (d is fbp.ScanResult) {
+                return d.device.remoteId == sr.device.remoteId;
+              }
+              return false;
+            });
+            if (!alreadyAdded) {
+              allDevices.add(sr);
+            }
+          }
+
+          if (allDevices.isEmpty) {
+            return Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(24),
               ),
-            ),
-          )
-        else
-          ListView.builder(
+              child: Center(
+                child: Text(
+                  btService.isScanning
+                      ? 'Memindai perangkat Bluetooth di sekitar...'
+                      : 'Tidak ada perangkat aktif ditemukan. Pastikan ESP32 dalam keadaan menyala dan tekan tombol pindaian di kanan atas.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontFamily: 'Utendo', color: isDark ? Colors.grey.shade400 : Colors.grey, fontSize: 13),
+                ),
+              ),
+            );
+          }
+
+          return ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: btService.scanResults.length + btService.mockFoundDevices.length,
+            itemCount: allDevices.length,
             itemBuilder: (context, index) {
               String devName;
-              dynamic actualDevice;
+              fbp.BluetoothDevice deviceObj;
+              int? rssi;
 
-              if (index < btService.scanResults.length) {
-                final sr = btService.scanResults[index];
-                devName = sr.device.platformName.isNotEmpty ? sr.device.platformName : sr.device.remoteId.str;
-                actualDevice = sr.device;
+              final item = allDevices[index];
+              if (item is fbp.ScanResult) {
+                deviceObj = item.device;
+                rssi = item.rssi;
+                devName = deviceObj.platformName.isNotEmpty 
+                    ? deviceObj.platformName 
+                    : (item.advertisementData.advName.isNotEmpty 
+                        ? item.advertisementData.advName 
+                        : deviceObj.remoteId.str);
+              } else if (item is fbp.BluetoothDevice) {
+                deviceObj = item;
+                devName = deviceObj.platformName.isNotEmpty 
+                    ? deviceObj.platformName 
+                    : deviceObj.remoteId.str;
               } else {
-                devName = btService.mockFoundDevices[index - btService.scanResults.length];
+                return const SizedBox.shrink();
               }
 
-              final isThisConnected = btService.isConnected && btService.connectedDeviceName == devName;
+              final isThisConnected = btService.isConnected && (
+                btService.connectedDeviceName == devName ||
+                btService.connectedDeviceName == deviceObj.platformName ||
+                btService.connectedDeviceName == deviceObj.remoteId.str
+              );
+
+              String subtitleText;
+              if (isThisConnected) {
+                subtitleText = 'Status: Terhubung';
+              } else if (rssi != null) {
+                subtitleText = 'Ready to Connect (Sinyal: $rssi dBm)';
+              } else {
+                subtitleText = 'Ready to Connect (${deviceObj.remoteId.str})';
+              }
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
@@ -391,7 +489,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
                             style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 15, color: titleColor),
                           ),
                           Text(
-                            isThisConnected ? 'Status: Terhubung' : 'ESP32 Smart Sprayer BLE',
+                            subtitleText,
                             style: TextStyle(
                               fontFamily: 'Utendo',
                               fontSize: 12,
@@ -402,27 +500,29 @@ class _BluetoothPageState extends State<BluetoothPage> {
                       ),
                     ),
                     ElevatedButton(
-                      onPressed: isThisConnected
+                      onPressed: (isThisConnected || btService.isConnecting)
                           ? null
                           : () {
-                              if (actualDevice != null) {
-                                btService.connectToDevice(devName, device: actualDevice);
-                              } else {
-                                btService.connectToDevice(devName);
-                              }
+                              btService.connectToDevice(devName, device: deviceObj);
                             },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryAccent,
                         foregroundColor: isDark ? ThemeProvider.blackColor : Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
-                      child: Text(isThisConnected ? 'Terhubung' : 'Sambungkan', style: const TextStyle(fontFamily: 'Utendo')),
+                      child: Text(
+                        isThisConnected
+                            ? 'Terhubung'
+                            : (btService.isConnecting && btService.connectedDeviceName == 'Connecting...' ? 'Menghubungkan...' : 'Sambungkan'),
+                        style: const TextStyle(fontFamily: 'Utendo'),
+                      ),
                     ),
                   ],
                 ),
               );
             },
-          ),
+          );
+        }(),
       ],
     );
   }

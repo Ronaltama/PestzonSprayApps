@@ -1,7 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
 import '../models/device_status.dart';
 import '../models/spray_log.dart';
 import '../models/spray_schedule.dart';
@@ -9,115 +10,278 @@ import '../models/device_config.dart';
 import 'database_helper.dart';
 
 class BluetoothService extends ChangeNotifier {
+  // Service & Characteristic UUIDs for ESP32 Smart Sprayer BLE
+  static const String serviceUuid = "4fa1c691-e9a5-4307-9a45-500f7a6a0a9c";
+  static const String rxCharUuid = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Write
+  static const String txCharUuid = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // Notify/Read
+
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
   bool _isConnected = false;
   bool get isConnected => _isConnected;
 
+  bool _isConnecting = false;
+  bool get isConnecting => _isConnecting;
+
   String _connectedDeviceName = 'Tidak Terhubung';
   String get connectedDeviceName => _connectedDeviceName;
+
+  fbp.BluetoothAdapterState _adapterState = fbp.BluetoothAdapterState.unknown;
+  fbp.BluetoothAdapterState get adapterState => _adapterState;
+
+  // Bluetooth dianggap ON jika adapter ON atau jika ditemukan perangkat terdaftar/scan
+  bool get isBluetoothOn =>
+      _adapterState == fbp.BluetoothAdapterState.on ||
+      _scanResults.isNotEmpty ||
+      _systemDevices.isNotEmpty;
 
   DeviceStatus _deviceStatus = DeviceStatus();
   DeviceStatus get deviceStatus => _deviceStatus;
 
   Timer? _sprayTimer;
 
-  // List of discovered devices
-  List<ScanResult> _scanResults = [];
-  List<ScanResult> get scanResults => _scanResults;
-  
-  // Mock devices for unsupported platforms (Linux/Windows)
-  List<String> _mockFoundDevices = [];
-  List<String> get mockFoundDevices => _mockFoundDevices;
+  // List of discovered devices dynamically from active live BLE scan
+  List<fbp.ScanResult> _scanResults = [];
+  List<fbp.ScanResult> get scanResults => _scanResults;
 
-  BluetoothDevice? _connectedDevice;
+  // System devices that are ACTIVE / Ready to connect (Unbonded / Not Set Up)
+  List<fbp.BluetoothDevice> _systemDevices = [];
+  List<fbp.BluetoothDevice> get systemDevices => _systemDevices;
+
+  fbp.BluetoothDevice? _connectedDevice;
+  fbp.BluetoothCharacteristic? _rxCharacteristic;
+  fbp.BluetoothCharacteristic? _txCharacteristic;
+
+  StreamSubscription<List<fbp.ScanResult>>? _scanSubscription;
+  StreamSubscription<fbp.BluetoothAdapterState>? _adapterStateSubscription;
+  StreamSubscription<fbp.BluetoothConnectionState>? _connectionSubscription;
+  StreamSubscription<List<int>>? _notifySubscription;
+
+  BluetoothService() {
+    _initBluetoothStateListener();
+  }
+
+  void _initBluetoothStateListener() {
+    if (!kIsWeb) {
+      _adapterStateSubscription = fbp.FlutterBluePlus.adapterState.listen((state) {
+        _adapterState = state;
+        notifyListeners();
+        if (state == fbp.BluetoothAdapterState.on) {
+          startScan();
+        }
+      });
+    } else {
+      _adapterState = fbp.BluetoothAdapterState.on;
+    }
+  }
+
+  Future<void> turnOnBluetooth() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        await fbp.FlutterBluePlus.turnOn();
+      } catch (e) {
+        if (kDebugMode) print('Failed to turn on bluetooth: $e');
+      }
+    }
+  }
 
   void startScan() async {
+    if (_isScanning) return;
+
     _isScanning = true;
-    _mockFoundDevices = [];
-    _scanResults = [];
     notifyListeners();
 
-    // Check if platform is supported by flutter_blue_plus
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS)) {
+    if (!kIsWeb) {
       try {
         // Stop any existing scan
-        await FlutterBluePlus.stopScan();
-        
-        // Listen to scan results
-        FlutterBluePlus.scanResults.listen((results) {
+        await fbp.FlutterBluePlus.stopScan();
+
+        // 1. Fetch system devices & filter ONLY active / ready-to-connect devices (Excluding bonded offline archives)
+        try {
+          final allSysDevs = await fbp.FlutterBluePlus.systemDevices([]);
+          List<fbp.BluetoothDevice> filteredActiveSysDevs = [];
+          for (var dev in allSysDevs) {
+            // Exclude bonded/paired devices that are disconnected (offline archive history)
+            if (dev.bondState == fbp.BluetoothBondState.bonded &&
+                dev.isConnected == false) {
+              continue; // Skip offline archive device!
+            }
+            filteredActiveSysDevs.add(dev);
+          }
+          _systemDevices = filteredActiveSysDevs;
+          if (_systemDevices.isNotEmpty) {
+            _adapterState = fbp.BluetoothAdapterState.on;
+          }
+          notifyListeners();
+        } catch (_) {}
+
+        // 2. Listen to active BLE scan results as they arrive live
+        _scanSubscription?.cancel();
+        _scanSubscription = fbp.FlutterBluePlus.scanResults.listen((results) {
           _scanResults = results;
+          if (results.isNotEmpty) {
+            _adapterState = fbp.BluetoothAdapterState.on;
+          }
           notifyListeners();
         });
 
-        // Start scanning
-        await FlutterBluePlus.startScan(timeout: const Duration(seconds: 4));
-        
-        // Wait for scan to finish
-        await Future.delayed(const Duration(seconds: 4));
+        // Start scanning for fast 3 seconds
+        await fbp.FlutterBluePlus.startScan(timeout: const Duration(seconds: 3));
       } catch (e) {
         if (kDebugMode) {
           print('Error scanning BLE: $e');
         }
       }
-    } else {
-      // Simulate scanning for Unsupported Platforms (Linux, Windows, Web)
-      await Future.delayed(const Duration(seconds: 2));
-      _mockFoundDevices = [
-        'ESP32_SmartSprayer_01',
-        'ESP32_Sprayer_Solar_02',
-        'ESP32_Pump_Misting',
-      ];
     }
     
     _isScanning = false;
     notifyListeners();
   }
 
-  void connectToDevice(String deviceName, {BluetoothDevice? device}) async {
+  Future<void> stopScan() async {
+    if (!kIsWeb) {
+      await fbp.FlutterBluePlus.stopScan();
+    }
+    _isScanning = false;
+    notifyListeners();
+  }
+
+  void connectToDevice(String deviceName, {required fbp.BluetoothDevice device}) async {
+    _isConnecting = true;
     _connectedDeviceName = 'Connecting...';
     notifyListeners();
 
-    if (device != null) {
-      try {
-        await device.connect();
-        _connectedDevice = device;
-        _connectedDeviceName = device.platformName.isNotEmpty ? device.platformName : 'Unknown ESP32';
-      } catch (e) {
-        if (kDebugMode) {
-          print('Failed to connect: $e');
+    try {
+      // Stop scan and let bluetooth controller settle
+      await stopScan();
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Instant direct connection (autoConnect: false)
+      await device.connect(timeout: const Duration(seconds: 5), autoConnect: false);
+      _connectedDevice = device;
+      _connectedDeviceName = device.platformName.isNotEmpty ? device.platformName : device.remoteId.str;
+
+      // Monitor connection state
+      _connectionSubscription?.cancel();
+      _connectionSubscription = device.connectionState.listen((state) {
+        if (state == fbp.BluetoothConnectionState.disconnected) {
+          _onDisconnected();
         }
-        _connectedDeviceName = 'Gagal Terhubung';
-        notifyListeners();
-        return;
+      });
+
+      // Discover services
+      List<fbp.BluetoothService> services = await device.discoverServices();
+      _setupCharacteristics(services);
+
+      _isConnected = true;
+      _isConnecting = false;
+      _deviceStatus = _deviceStatus.copyWith(
+        connectionState: 'Connected (BLE)',
+        batteryPercentage: 90,
+        batteryVoltage: 4.15,
+        isSolarCharging: true,
+      );
+      notifyListeners();
+      return;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Failed to connect to BLE device: $e');
       }
-    } else {
-      // Mock Connection
-      await Future.delayed(const Duration(seconds: 1));
-      _connectedDeviceName = deviceName;
+      final errStr = e.toString();
+      if (errStr.contains('ProfileUnavailable') || errStr.contains('BREDR')) {
+        _onDisconnected(customMessage: 'Gagal: Gunakan Firmware ESP32 BLE');
+      } else {
+        _onDisconnected(customMessage: 'Gagal Terhubung');
+      }
+      return;
+    }
+  }
+
+  void _setupCharacteristics(List<fbp.BluetoothService> services) async {
+    _rxCharacteristic = null;
+    _txCharacteristic = null;
+
+    for (var s in services) {
+      for (var c in s.characteristics) {
+        final uuidStr = c.uuid.toString().toLowerCase();
+        if (uuidStr == rxCharUuid || c.properties.write || c.properties.writeWithoutResponse) {
+          _rxCharacteristic ??= c;
+        }
+        if (uuidStr == txCharUuid || c.properties.notify || c.properties.indicate) {
+          _txCharacteristic ??= c;
+        }
+      }
     }
 
-    _isConnected = true;
-    _deviceStatus = _deviceStatus.copyWith(
-      connectionState: 'Connected (BLE)',
-      batteryPercentage: 88,
-      batteryVoltage: 4.1,
-      isSolarCharging: true,
-    );
+    if (_txCharacteristic != null && _txCharacteristic!.properties.notify) {
+      try {
+        await _txCharacteristic!.setNotifyValue(true);
+        _notifySubscription?.cancel();
+        _notifySubscription = _txCharacteristic!.lastValueStream.listen((data) {
+          _handleIncomingData(data);
+        });
+      } catch (e) {
+        if (kDebugMode) print('Failed to subscribe notify: $e');
+      }
+    }
+  }
+
+  void _handleIncomingData(List<int> data) {
+    try {
+      final message = utf8.decode(data);
+      if (kDebugMode) print('BLE Received: $message');
+      
+      final json = jsonDecode(message);
+      if (json is Map<String, dynamic>) {
+        _deviceStatus = _deviceStatus.copyWith(
+          batteryPercentage: json['battery'] ?? _deviceStatus.batteryPercentage,
+          batteryVoltage: (json['voltage'] as num?)?.toDouble() ?? _deviceStatus.batteryVoltage,
+          isSolarCharging: json['solar'] ?? _deviceStatus.isSolarCharging,
+          isPumpRunning: json['pump'] ?? _deviceStatus.isPumpRunning,
+        );
+        notifyListeners();
+      }
+    } catch (_) {
+      // Non-JSON or raw text notification
+    }
+  }
+
+  void _sendBleMessage(Map<String, dynamic> payload) async {
+    if (_rxCharacteristic != null) {
+      try {
+        final jsonStr = jsonEncode(payload);
+        final bytes = utf8.encode(jsonStr);
+        await _rxCharacteristic!.write(bytes, withoutResponse: _rxCharacteristic!.properties.writeWithoutResponse);
+        if (kDebugMode) print('Sent BLE bytes: $jsonStr');
+      } catch (e) {
+        if (kDebugMode) print('Error writing BLE characteristic: $e');
+      }
+    }
+  }
+
+  void _onDisconnected({String customMessage = 'Tidak Terhubung'}) {
+    _notifySubscription?.cancel();
+    _connectionSubscription?.cancel();
+    _connectedDevice = null;
+    _rxCharacteristic = null;
+    _txCharacteristic = null;
+    _isConnected = false;
+    _isConnecting = false;
+    _connectedDeviceName = customMessage;
+    _deviceStatus = _deviceStatus.copyWith(connectionState: 'Disconnected');
     notifyListeners();
   }
 
   void disconnect() async {
     if (_connectedDevice != null) {
-      await _connectedDevice!.disconnect();
-      _connectedDevice = null;
+      try {
+        await _connectedDevice!.disconnect();
+      } catch (e) {
+        if (kDebugMode) print('Error disconnecting BLE: $e');
+      }
     }
-    
-    _isConnected = false;
-    _connectedDeviceName = 'Tidak Terhubung';
-    _deviceStatus = _deviceStatus.copyWith(connectionState: 'Disconnected');
-    notifyListeners();
+    _onDisconnected();
   }
 
   /// Trigger penyemprotan pompa DC 310 5V selama durasiDetik
@@ -134,7 +298,12 @@ class BluetoothService extends ChangeNotifier {
     );
     notifyListeners();
 
-    // In a real app, send start command via BLE here
+    // Send START command via BLE to ESP32
+    _sendBleMessage({
+      'cmd': 'START',
+      'duration': durationSeconds,
+      'mode': mode,
+    });
     
     // Timer countdown
     int remaining = durationSeconds;
@@ -178,7 +347,9 @@ class BluetoothService extends ChangeNotifier {
 
   void stopSpraying() {
     _sprayTimer?.cancel();
-    // In a real app, send stop command via BLE here
+    
+    // Send STOP command via BLE to ESP32
+    _sendBleMessage({'cmd': 'STOP'});
     
     _deviceStatus = _deviceStatus.copyWith(
       isPumpRunning: false,
@@ -190,8 +361,13 @@ class BluetoothService extends ChangeNotifier {
   void sendConfiguration(DeviceConfig config) {
     if (!_isConnected) return;
     
-    // In a real app, you would send this to the ESP32 via BLE Characteristics
-    // e.g., bleCharacteristic.write(config.toJson().toString().codeUnits);
+    _sendBleMessage({
+      'cmd': 'CONFIG',
+      'ssid': config.ssid,
+      'password': config.password,
+      'sprayDuration': config.sprayDurationSeconds,
+      'mqttEnabled': config.mqttEnabled,
+    });
     
     if (kDebugMode) {
       print('Config sent to ESP32: ${config.toJson()}');
@@ -202,7 +378,7 @@ class BluetoothService extends ChangeNotifier {
     if (!_isConnected) return;
 
     final payload = {
-      'action': 'sync_schedule',
+      'cmd': 'SCHEDULE',
       'schedules': schedules.map((s) => {
         'id': s.id,
         'hour': s.hour,
@@ -212,9 +388,20 @@ class BluetoothService extends ChangeNotifier {
       }).toList()
     };
     
-    // In a real app, send via BLE Characteristics
+    _sendBleMessage(payload);
+    
     if (kDebugMode) {
       print('Schedules synced to ESP32 via BLE: $payload');
     }
+  }
+
+  @override
+  void dispose() {
+    _scanSubscription?.cancel();
+    _adapterStateSubscription?.cancel();
+    _connectionSubscription?.cancel();
+    _notifySubscription?.cancel();
+    _sprayTimer?.cancel();
+    super.dispose();
   }
 }
