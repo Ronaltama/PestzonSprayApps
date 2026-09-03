@@ -655,5 +655,32 @@ try {
 
 ---
 
+## 14. Device Sync (Baca/Tulis Data Perangkat)
+
+> Ringkasan arsitektur tambahan untuk fitur sinkronisasi. Detail kontrak JSON lengkap ada di
+> `tasks/plan.md`.
+
+Perintah/status **push** lama (ESP → App di `status`/`log`; App → ESP di `command`/`config`)
+masih berfungsi, namun fitur **pull/kesimpulan/statistik/jadwal** memakai pola
+**request/response** baru yang memastikan app menarik data terbaru dari ESP dan ESP menjadi
+sumber kebenaran untuk jadwal. Lapisan antar-mukanya via `DeviceRepository` (`lib/services/device_repository.dart`):
+
+```
+UI (Dashboard/Schedule)
+        │ watch
+        ▼
+DeviceRepository  ── pilih kanal aktif: BLE → MQTT
+   ├─ refreshAll/refreshSummary/refreshStats/pullSchedules
+   ├─ pushSchedules (diserialkan)   ── auto memancarkan pada connect + aksi list
+   └─ kecepatan/waiter: timeout → sinkronisasi timeout
+        │
+        ├── BluetoothService   (transmisi newline-delimited JSON; request/response via RX/TX)
+        └── MqttService        (request → `sprayer/{id}/request`; response ← `sprayer/{id}/response`)
+```
+
+Envelope request/response: `{"v":1,"t":"<type>", …}` → jenis: `summary`, `stats`,
+`schedules`, dan `ack`. Statistik disimpan di ESP per tanggal (7 hari); app meminta rentang
+Senin–Minggu dan memetakannya ke chart. Jadwal dipull saat connect dan setiap perubahan lokal
+(tambah/hapus/nyalakan/matikan) langsung dikirim `set_schedules` penuh sebagai sumber kebenaran.
+
 **Last Updated:** 2024
-**Maintainer:** [Your Name/Team]

@@ -37,6 +37,8 @@ class DeviceRepository extends ChangeNotifier {
   final bool _enableDemoData;
   List<DailyVolumeStat>? _demoStats;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
+  final List<Future<void> Function()> _pushQueue = [];
+  bool _pushQueueRunning = false;
 
   DeviceRepository({
     required BluetoothService bluetoothService,
@@ -244,9 +246,28 @@ class DeviceRepository extends ChangeNotifier {
 
   /// Tulis daftar jadwal penuh ke ESP (dipakai untuk tambah/hapus/nyalakan/
   /// matikan). Mengembalikan ack perangkat, atau `null` jika timeout / offline.
-  Future<DeviceAck?> pushSchedules(List<SpraySchedule> schedules) async {
+  ///
+  /// Push diserialkan lewat [_pushQueue]: operasi berurutan ({Queue}) sehingga
+  /// ACK dari push sebelumnya tidak berpindah ke push berikutnya saat user
+  /// mengetuk cepat (toggle/hapus berturut-turut).
+  Future<DeviceAck?> pushSchedules(List<SpraySchedule> schedules) {
+    final result = Completer<DeviceAck?>();
+    _pushQueue.add(() async {
+      try {
+        final ack = await _pushSchedulesOnce(schedules);
+        result.complete(ack);
+      } catch (e) {
+        result.complete(null);
+      }
+    });
+    _drainPushQueue();
+    return result.future;
+  }
+
+  Future<DeviceAck?> _pushSchedulesOnce(List<SpraySchedule> schedules) async {
     final channel = activeChannel;
     if (channel == DeviceChannel.none) return null;
+    if (_isPushing) return null; // safety: tidak mungkin karena queue.
     _isPushing = true;
     _lastAck = null;
     notifyListeners();
@@ -262,6 +283,17 @@ class DeviceRepository extends ChangeNotifier {
     } finally {
       _isPushing = false;
       notifyListeners();
+    }
+  }
+
+  void _drainPushQueue() async {
+    if (_pushQueue.isNotEmpty && !_pushQueueRunning) {
+      _pushQueueRunning = true;
+      while (_pushQueue.isNotEmpty) {
+        final op = _pushQueue.removeAt(0);
+        await op();
+      }
+      _pushQueueRunning = false;
     }
   }
 

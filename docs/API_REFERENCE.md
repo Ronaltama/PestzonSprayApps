@@ -1172,6 +1172,75 @@ class DashboardPage extends StatelessWidget {
 
 ---
 
+## Device Sync (Request/Response ke Perangkat ESP)
+
+Fitur sinkronisasi data perangkat (kesimpulan, statistik 7 hari, dan jadwal semprot).
+
+**Referensi utama**: `tasks/plan.md` (berisi kontrak JSON & catatan firmware ESP32).
+
+### Service
+
+- `lib/services/device_repository.dart` — pintu akses tingkat UI untuk baca/tulis data perangkat.
+  Memilih kanal aktif (BLE > MQTT) dan membungkus request/response dengan timeout (& queue push serial).
+  Didaftarkan via `ChangeNotifierProxyProvider2` di `lib/main.dart`.
+- `MqttService` — subscribe ke topik `response`, mem-parsing envelope kontrak perangkat,
+  ekspos stream `summaryStream/statsStream/schedulesStream/ackStream`;
+  request dikirim ke topik request.
+- `BluetoothService` — transport BLE memakai **newline-delimited JSON** (pesan diakhiri `\n`
+  agar aman dari pecahan MTU). Mem-parsing envelope yang sama dan mengekspos stream yang sama.
+
+### Topik MQTT (dinamik per deviceId)
+
+| Topic | Arah | Isi |
+| --- | --- | --- |
+| `sprayer/{id}/status` | ESP → App | Push status berkala (`battery, voltage, isSolar, totalSesi, totalVolume`, dst) |
+| `sprayer/{id}/log` | ESP → App | Riwayat/log semprot |
+| `sprayer/{id}/command` | App → ESP | Kontrol (`spray`, `stop`, dst) |
+| `sprayer/{id}/config` | App → ESP | Config WiFi / legacy `sync_schedule` |
+| `sprayer/{id}/request` | App → ESP | **Baru**: envelope request (`get_summary`, `get_stats`, `get_schedules`, `set_schedules`) |
+| `sprayer/{id}/response` | ESP → App | **Baru**: envelope response (`summary`, `stats`, `schedules`, `ack`) |
+
+### Ringkas envelope
+
+Semua pesan adalah satu objek JSON: `{"v":1,"t":"<type>", ...}`. Contoh:
+
+```jsonc
+// Request summary → Response summary
+{"v":1,"t":"get_summary"} → {"v":1,"t":"summary","battery":87,"voltage":4.12,"isSolar":1,
+  "isPumpRunning":0,"totalVolume":1234.5,"totalSesi":6,"ts":1756900000}
+
+// Statistik pekan berjalan
+{"v":1,"t":"get_stats","from":"2026-08-31","to":"2026-09-06"}
+  → {"v":1,"t":"stats","days":[{"d":"2026-08-31","v":900,"s":4}, ...]}
+
+// Jadwal: baca & tulis penuh (id/active/title)
+{"v":1,"t":"get_schedules"} → {"v":1,"t":"schedules","schedules":[{"id":1,"title":"Semprot Pagi",
+  "hour":7,"minute":0,"duration":30,"active":1}, ...]}
+
+{"v":1,"t":"set_schedules","schedules":[...]} → {"v":1,"t":"ack","ref":"set_schedules","ok":1}
+```
+
+### Method utama (DeviceRepository)
+
+| Method | Keterangan |
+| --- | --- |
+| `refreshAll()` | Tarik summary + statistik pekan berjalan |
+| `refreshSummary()` | `get_summary` -> update `summary` |
+| `refreshStats()` | `get_stats` (Senin–Minggu) -> update `stats`/chart |
+| `pullSchedules()` | `get_schedules` -> daftar jadwal ESP |
+| `pushSchedules(List)` | `set_schedules` (push full) -> `ack`, diserialkan |
+
+### Model terkait
+
+- `lib/models/daily_volume_stat.dart` — statistik volume per tanggal.
+- `lib/models/device_ack.dart` — konfirmasi tulis dari ESP.
+
+### Moda demo
+
+`DeviceRepository(enableDemoData: true …)` mengisi statistik dummy acak (60–67 ml/hari)
+**hanya saat perangkat tidak terhubung** (untuk pratinjau UI tanpa hardware).
+Dinonaktifkan di produksi (`lib/main.dart`).
+
 **Last Updated**: 2024  
 **Version**: 1.0.0
 

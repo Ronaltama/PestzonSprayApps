@@ -29,7 +29,7 @@
 **Checkpoint:** Connect → jadwal ESP tampil; perubahan tersimpan di ESP setelah restart.
 
 ## Phase 4: Polish & dokumentasi
-- [ ] Task 9: State error & notifikasi timeout/offline/`ack ok:0`; bersihkan teks/tombol usang
-- [ ] Task 10: Update `docs/API_REFERENCE.md` & `docs/ARCHITECTURE.md`
+- [x] Task 9: State error & notifikasi — auto-pull/jadwal saat connect tidak mem-banner error; push diserialkan agar ACK tidak “nyilih” antar operasi cepat
+- [x] Task 10: Update `docs/API_REFERENCE.md` (Device Sync) & `docs/ARCHITECTURE.md` (bag. 14 Device Sync)
 
 **Checkpoint:** `flutter analyze` bersih, test lolos, skenario end-to-end connect→pull→ubah→restart ESP.

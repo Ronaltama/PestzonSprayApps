@@ -61,6 +61,10 @@ class _SchedulePageState extends State<SchedulePage> {
 
   /// Tarik jadwal dari ESP saat connect dan jadikan daftar alat sebagai
   /// sumber kebenaran (menimpa DB lokal).
+  ///
+  /// Aksi ini otomatis (saat connect/membuka halaman), jadi tidak menampilkan
+  /// toast agar tidak berderau; kegagalan cukup diam dan UI tetap menampilkan
+  /// data cache/SQLite.
   Future<void> _pullFromDevice() async {
     if (_syncing) return;
     setState(() => _syncing = true);
@@ -69,14 +73,13 @@ class _SchedulePageState extends State<SchedulePage> {
     setState(() => _syncing = false);
 
     if (pulled == null) {
-      _notify('Gagal menarik jadwal dari alat (tidak ada respon).',
-          isError: true);
+      // Tidak ada respon — biarkan daftar lokal tersaji tanpa popup error.
       return;
     }
 
+    // ESP kosong (mis. perangkat baru): dorong jadwal bawaan lokal sekali ke
+    // alat secara senyap (tanpa toast). Setelah itu daftar kosong dihormati.
     if (pulled.isEmpty) {
-      // ESP kosong (mis. perangkat baru): dorong jadwal bawaan lokal sekali
-      // ke alat. Setelah itu daftar kosong dari alat tetap dihormati.
       final local = await _db!.getAllSchedules();
       if (!mounted) return;
       if (local.isNotEmpty) {
@@ -86,8 +89,6 @@ class _SchedulePageState extends State<SchedulePage> {
     }
 
     await _db!.replaceAllSchedules(pulled);
-    if (!mounted) return;
-    _notify('Jadwal disinkronkan dari alat (${pulled.length} jadwal).');
   }
 
   /// Kirim daftar jadwal lokal (DB) ke alat. Dipakai untuk kirim ulang manual
