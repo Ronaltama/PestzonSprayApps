@@ -71,7 +71,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: AppTheme.spacingLG),
 
               // 4. SOLAR & BATTERY CARD (Sistem Daya Kebun)
-              _buildSolarBatteryCard(context, status, isDark),
+              _buildSolarBatteryCard(context, status, isBleConnected, isMqttConnected, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
               // 5. PUMP CONTROL CARD
@@ -356,8 +356,96 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Widget _buildDataEmptyCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool isDark,
+  }) {
+    final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
+    final titleColorV = isDark ? Colors.white : AppTheme.textDark;
+    final primaryA = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: isDark ? [] : AppTheme.shadowSM,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isDark ? primaryA : const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  icon,
+                  color: isDark ? ThemeProvider.blackColor : Colors.grey.shade600,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 16, color: titleColorV),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontFamily: 'Utendo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.remove_circle_outline, size: 16, color: isDark ? Colors.grey.shade500 : Colors.grey.shade400),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'Perangkat belum terhubung — data belum tersedia',
+                  style: TextStyle(
+                    fontFamily: 'Utendo',
+                    fontSize: 12,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- 2. SOLAR & BATTERY CARD ---
-  Widget _buildSolarBatteryCard(BuildContext context, dynamic status, bool isDark) {
+  Widget _buildSolarBatteryCard(
+    BuildContext context,
+    dynamic status,
+    bool isBle,
+    bool isMqtt,
+    bool isDark,
+  ) {
+    if (!(isBle || isMqtt)) {
+      return _buildDataEmptyCard(
+        icon: Icons.battery_charging_full,
+        title: 'Sistem Daya Kebun',
+        subtitle: 'Baterai 18650 & Panel Surya',
+        isDark: isDark,
+      );
+    }
     final battery = status.batteryPercentage;
     final isSolar = status.isSolarCharging;
     final voltage = status.batteryVoltage;
@@ -483,6 +571,15 @@ class _DashboardPageState extends State<DashboardPage> {
     final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
     final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+
+    if (!(isBle || isMqtt)) {
+      return _buildDataEmptyCard(
+        icon: Icons.water_drop,
+        title: 'Pompa Misting DC',
+        subtitle: 'Sistem Misting / Kabut',
+        isDark: isDark,
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
