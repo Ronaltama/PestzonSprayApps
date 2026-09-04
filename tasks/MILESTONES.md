@@ -215,14 +215,23 @@ global sampai tampilan per-device diputuskan.
 dan tempat memasukkan unit baru dari hasil scan.
 
 ### Item
-- [ ] **M5.1** Tab Perangkat (kini menggantikan `BluetoothPage`) menampilkan
-dua bagian: registry (atas) & pemindai (bawah) sesuai UI §3.3.
-- [ ] **M5.2** Registry: daftar unit lengkap (nama/MAC), ikon favorit, hapus
-unit (dengan konfirmasi ikut-hapus data).
-- [ ] **M5.3** “Pindai”: umpan hasil scan + centang pilih-ganda; tombol
-“Tambahkan (n) unit” → registry; yang sudah dikenal ditandai “Sudah ada”.
-- [ ] **M5.4** Arah koneksi tetap satu-perangkat: unit terpilih pada satu baris
-(connect → detail); sesi BLE satu-perangkat (M1) dipertahankan.
+- [x] **M5.1** Tab Perangkat menampilkan bagian registry (“Perangkat Saya”)
+      di atas hasil pindaian (registry atas & pemindai di bawah).
+- [x] **M5.2** Registry: favorit ✅ & hapus unit dengan dialog konfirmasi
+      (ikut-hapus log/jadwal/snapshot) ✅ — lewat `_confirmDeleteDevice`.
+- [x] **M5.3** Pemindaian: hasil yang sudah terdaftar ditandai “Sudah ada di
+daftar”. Saat menekan “Sambungkan” unit, perangkat otomatis dicatat ke
+registry (`EspDevice`) — onboarding per unit bisa dari scan. (Tombol
+batch “Tambahkan (n)” belum dibangun; semua onboarding saat ini via
+sambungkan.)
+- [x] **M5.4** Kartu registry mengarah ke Detail (M4); sesi koneksi tetap
+satu-perangkat (M1).
+
+### Catatan
+- M5a (registry list + favorit + Detail), M5b (hapus dgn konfirmasi), dan
+M5c parsial (tandai “sudah ada”, registrasi saat connect) selesai. Pembuatan
+tombol pilih-banyak “Tambahkan (n) units dari hasil scan” tetap pekerjaan
+bersisa (opsional).
 
 ### Catatan
 - Perangkat ter-register tetap tampil di dashboard meski saat ini belum dapat

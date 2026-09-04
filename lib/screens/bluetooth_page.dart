@@ -3,10 +3,13 @@ import 'package:provider/provider.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
 import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
+import '../services/esp_device_registry.dart';
 import '../services/theme_provider.dart';
 import '../models/device_config.dart';
+import '../models/esp_device.dart';
 import '../theme/theme.dart';
 import '../utils/app_notification.dart';
+import 'device_detail_screen.dart';
 
 class BluetoothPage extends StatefulWidget {
   const BluetoothPage({super.key});
@@ -18,10 +21,11 @@ class BluetoothPage extends StatefulWidget {
 class _BluetoothPageState extends State<BluetoothPage> {
   int _selectedModeIndex = 0; // 0: Bluetooth (BLE), 1: Cloud (MQTT & WiFi)
 
-  final _deviceIdController = TextEditingController(text: 'SPRAYER-001');
+  final _deviceIdController = TextEditingController(text: 'esp_sprayer');
   final _ssidController = TextEditingController();
   final _pwdController = TextEditingController();
   double _sprayDuration = 30.0;
+
 
   @override
   void dispose() {
@@ -214,6 +218,149 @@ class _BluetoothPageState extends State<BluetoothPage> {
     );
   }
 
+  // --- M5a: daftar perangkat tersimpan (registry) ---
+  // Menampilkan subset ringkas sebelum tombol pindaian; card mengarah ke
+  // layar detail perangkat (M4).
+  List<Widget> _buildMyDevices(BuildContext context, bool isDark, Color cardBg,
+      Color primaryAccent, Color titleColor) {
+    final registry = Provider.of<EspDeviceRegistry>(context);
+    final devices = registry.devices;
+    final sub = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
+    if (devices.isEmpty) return const <Widget>[];
+
+    final items = <Widget>[
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text('Perangkat Saya',
+            style: TextStyle(
+                fontFamily: 'Utendo',
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: titleColor)),
+      ),
+      for (final dev in devices)
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: isDark ? [] : AppTheme.shadowSM,
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.sensors,
+                  size: 20,
+                  color: isDark
+                      ? ThemeProvider.greenAccentColor
+                      : AppTheme.primaryColor),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(dev.name,
+                        style: TextStyle(
+                            fontFamily: 'Utendo',
+                            fontWeight: FontWeight.bold,
+                            color: titleColor)),
+                    Text(dev.deviceKey,
+                        style: TextStyle(
+                            fontFamily: 'Utendo',
+                            fontSize: 11,
+                            color: sub)),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: dev.isFavorite ? 'Hapus favorit' : 'Favorit',
+                icon: Icon(
+                  dev.isFavorite ? Icons.star : Icons.star_border,
+                  color: dev.isFavorite
+                      ? ThemeProvider.greenAccentColor
+                      : Colors.grey,
+                  size: 20,
+                ),
+                onPressed: () async {
+                  await registry.toggleFavorite(dev.deviceKey);
+                },
+              ),
+              IconButton(
+                tooltip: 'Hapus dari daftar',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.delete_outline,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey,
+                    size: 20),
+                onPressed: () => _confirmDeleteDevice(
+                    context, registry, dev, isDark, cardBg, titleColor),
+              ),
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => DeviceDetailScreen(deviceKey: dev.deviceKey),
+                  ),
+                ),
+                child: const Text('Detail',
+                    style: TextStyle(fontFamily: 'Utendo', fontSize: 12)),
+              ),
+            ],
+          ),
+        ),
+      const SizedBox(height: AppTheme.spacingSM),
+    ];
+    return items;
+  }
+
+  Future<void> _confirmDeleteDevice(BuildContext context,
+      EspDeviceRegistry registry, EspDevice dev, bool isDark,
+      Color cardBg, Color titleColor) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus perangkat?',
+            style: TextStyle(fontFamily: 'Utendo')),
+        content: Text(
+            '“${dev.name}” (${dev.deviceKey}) akan dihapus beserta riwayat log, jadwal, dan snapshot tersimpannya. Lanjutkan?',
+            style: const TextStyle(fontFamily: 'Utendo')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal',
+                  style: TextStyle(fontFamily: 'Utendo'))),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.errorColor),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus', style: TextStyle(fontFamily: 'Utendo')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await registry.remove(dev.deviceKey);
+    if (mounted) {
+      AppNotification.show(context, 'Perangkat dihapus dari daftar.');
+    }
+  }
+
+  Future<void> _connectScanResult(BuildContext context, BluetoothService btService,
+      String devName, fbp.BluetoothDevice device) async {
+    final registry = context.read<EspDeviceRegistry>();
+    // Daftarkan dulu (idempoten) supaya dashboard/registry mengingat perangkat
+    // meski sesi sambungan berikutnya singkat.
+    await registry.registerOrUpdate(EspDevice(
+      deviceKey: device.remoteId.str,
+      name: devName.isEmpty ? device.remoteId.str : devName,
+      bleAdvertisedName: devName,
+      lastSeenAt: DateTime.now(),
+    ));
+    if (mounted) {
+      await btService.connectToDevice(devName, device: device);
+    }
+  }
+
   // --- BLE SECTION ---
   Widget _buildBleSection(BuildContext context, BluetoothService btService, bool isDark, Color cardBg, Color primaryAccent, Color titleColor) {
     return Column(
@@ -334,6 +481,9 @@ class _BluetoothPageState extends State<BluetoothPage> {
         ),
         const SizedBox(height: AppTheme.spacingLG),
 
+        // M5a: Perangkat Saya (registry terpakai) sebelum pemindaian di bawah
+        ..._buildMyDevices(context, isDark, cardBg, primaryAccent, titleColor),
+
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -444,8 +594,16 @@ class _BluetoothPageState extends State<BluetoothPage> {
                 btService.connectedDeviceName == deviceObj.remoteId.str
               );
 
+              // M5c: tandai apakah unit sudah terdaftar di registry (MAC).
+              final isRegistered =
+                  Provider.of<EspDeviceRegistry>(context, listen: false)
+                          .byKey(deviceObj.remoteId.str) !=
+                      null;
+
               String subtitleText;
-              if (isThisConnected) {
+              if (isRegistered) {
+                subtitleText = 'Sudah ada di daftar — Hubungkan untuk sinkron.';
+              } else if (isThisConnected) {
                 subtitleText = 'Status: Terhubung';
               } else if (rssi != null) {
                 subtitleText = 'Ready to Connect (Sinyal: $rssi dBm)';
@@ -503,7 +661,14 @@ class _BluetoothPageState extends State<BluetoothPage> {
                       onPressed: (isThisConnected || btService.isConnecting)
                           ? null
                           : () {
-                              btService.connectToDevice(devName, device: deviceObj);
+                              // M5c: catat ke registry (bila belum ada) lalu
+                              // sambungkan satu perangkat.
+                              _connectScanResult(
+                                context,
+                                btService,
+                                devName,
+                                deviceObj,
+                              );
                             },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryAccent,
@@ -612,7 +777,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
                 controller: _deviceIdController,
                 style: TextStyle(fontFamily: 'Utendo', color: titleColor),
                 decoration: const InputDecoration(
-                  labelText: 'Kode ID Perangkat (e.g. SPRAYER-001)',
+                  labelText: 'Kode ID Perangkat (e.g. esp_sprayer)',
                   prefixIcon: Icon(Icons.perm_identity),
                 ),
               ),
