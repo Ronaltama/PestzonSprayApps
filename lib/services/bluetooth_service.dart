@@ -29,6 +29,16 @@ class BluetoothService extends ChangeNotifier {
   String _connectedDeviceName = 'Tidak Terhubung';
   String get connectedDeviceName => _connectedDeviceName;
 
+  /// Kunci perangkat (MAC BLE, `remoteId.str`) pada sesi aktif saat ini.
+  /// `null` bila tidak sedang tersambung ke mana pun. Identitas utama untuk
+  /// memetakan data per perangkat pada lapisan lebih tinggi (M2+).
+  String? _activeDeviceKey;
+  String? get activeDeviceKey => _activeDeviceKey;
+
+  /// Identitas perangkat terakhir yang berhasil tersambung (untuk membedakan
+  /// perpindahan antar perangkat dan mengisolasi telemetri sesuai sesi).
+  String? _lastConnectedDeviceKey;
+
   fbp.BluetoothAdapterState _adapterState = fbp.BluetoothAdapterState.unknown;
   fbp.BluetoothAdapterState get adapterState => _adapterState;
 
@@ -178,6 +188,7 @@ class BluetoothService extends ChangeNotifier {
       return;
     }
     _isConnecting = true;
+    _activeDeviceKey = null;
     _connectedDeviceName = 'Connecting...';
     _connectedDevice = null;
     _rxCharacteristic = null;
@@ -202,6 +213,7 @@ class BluetoothService extends ChangeNotifier {
       _connectedDeviceName = device.platformName.isNotEmpty
           ? device.platformName
           : device.remoteId.str;
+      _activeDeviceKey = device.remoteId.str;
 
       // Monitor connection state
       _connectionSubscription?.cancel();
@@ -235,9 +247,13 @@ class BluetoothService extends ChangeNotifier {
 
       _isConnected = true;
       _isConnecting = false;
-      // Nilai baterai/tegangan/volume tidak di-set dummy di sini: data asli
-      // diminta via request `get_summary` (DeviceRepository.refreshAll saat
-      // connect) dan diisi dari response ESP.
+      // Isolasi sesi: bila berpindah ke perangkat lain (key berbeda dari
+      // sambungan sebelumnya), kosongkan telemetri lama. Data asli diisi ulang
+      // lewat request `get_summary` (DeviceRepository.refreshAll saat connect).
+      if (_lastConnectedDeviceKey != device.remoteId.str) {
+        _deviceStatus = DeviceStatus();
+      }
+      _lastConnectedDeviceKey = device.remoteId.str;
       _deviceStatus = _deviceStatus.copyWith(
         connectionState: 'Connected (BLE)',
       );
@@ -454,11 +470,12 @@ class BluetoothService extends ChangeNotifier {
     _connectedDevice = null;
     _rxCharacteristic = null;
     _txCharacteristic = null;
+    _activeDeviceKey = null;
     _incomingBuffer.clear();
     _isConnected = false;
     _isConnecting = false;
     _connectedDeviceName = customMessage;
-    _deviceStatus = _deviceStatus.copyWith(connectionState: 'Disconnected');
+    _deviceStatus = DeviceStatus();
     notifyListeners();
   }
 
@@ -523,6 +540,7 @@ class BluetoothService extends ChangeNotifier {
           mode: mode,
           status: 'Success',
           communicationMethod: 'BLE',
+          deviceKey: _activeDeviceKey,
         );
         await dbHelper.insertLog(log);
       } else {

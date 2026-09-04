@@ -7,6 +7,7 @@ import '../models/daily_volume_stat.dart';
 import '../models/spray_schedule.dart';
 import 'bluetooth_service.dart';
 import 'mqtt_service.dart';
+import 'database_helper.dart';
 
 enum DeviceChannel { none, ble, mqtt }
 
@@ -36,6 +37,12 @@ class DeviceRepository extends ChangeNotifier {
 
   final bool _enableDemoData;
   List<DailyVolumeStat>? _demoStats;
+
+  // ---- M2: cache status & snapshot per perangkat ----
+  /// Status terakhir yang diterima per `device_key` (sesi BLE aktif).
+  final Map<String, DeviceStatus> _statusByDevice = {};
+  final DatabaseHelper _db = DatabaseHelper.instance;
+
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   final List<Future<void> Function()> _pushQueue = [];
   bool _pushQueueRunning = false;
@@ -64,6 +71,9 @@ class DeviceRepository extends ChangeNotifier {
       _lastAck = v;
       notifyListeners();
     }));
+    // Persist summary per aktif device saat diterima (M2.2/M2.5).
+    _subscriptions.add(_bt.summaryStream.listen(_onBleSummary));
+    _subscriptions.add(_mqtt.statusStream.listen(_onMqttSummary));
     _subscriptions.add(_mqtt.statsStream.listen((v) {
       _stats = v;
       notifyListeners();
@@ -100,6 +110,70 @@ class DeviceRepository extends ChangeNotifier {
         return _mqtt.latestStatus ?? _bt.deviceStatus;
       case DeviceChannel.none:
         return _bt.deviceStatus;
+    }
+  }
+
+  // ---- M2: akses status per perangkat & penyimpanan snapshot ----
+
+  /// Status terakhir (dari sesi aktif / event penting) untuk [deviceKey].
+  /// Cache ringan di memori; untuk membaca riwayat persisten gunakan
+  /// [loadLastSnapshot]. Return `null` bila belum ada data di sesi ini.
+  DeviceStatus? statusOf(String deviceKey) => _statusByDevice[deviceKey];
+
+  /// Snapshot persisten terlast untuk [deviceKey] bila pernah disimpan
+  /// (mis. sesi lama atau saat sedang offline).
+  Future<DeviceStatus?> loadLastSnapshot(String deviceKey) async {
+    try {
+      final snap = await _db.latestDeviceSnapshot(deviceKey);
+      if (snap == null) return null;
+      return DeviceStatus.fromJson(snap.payload);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _onBleSummary(DeviceStatus status) {
+    final key = _bt.activeDeviceKey;
+    if (key == null) return;
+    _statusByDevice[key] = status.copyWith(connectionState: 'Connected (BLE)');
+    unawaited(_persistSummary(key, status));
+    notifyListeners();
+  }
+
+  void _onMqttSummary(DeviceStatus status) {
+    final id = _mqtt.deviceId;
+    if (id.isEmpty) return;
+    // Disimpan di cache lewat kunci berprefiks agar tak bentrok dengan MAC BLE;
+    // penyimpanan persisten penuh dilakukan saat MQTT dihubungkan ke registry
+    // MAC (di luar lingkup milestone ini).
+    _statusByDevice['mqtt:$id'] =
+        status.copyWith(connectionState: 'Connected (MQTT)');
+    notifyListeners();
+  }
+
+  Future<void> _persistSummary(String mac, DeviceStatus s) async {
+    try {
+      final payload = <String, dynamic>{
+        'battery': s.batteryPercentage,
+        'voltage': s.batteryVoltage,
+        'isSolar': s.isSolarCharging ? 1 : 0,
+        'isPumpRunning': s.isPumpRunning ? 1 : 0,
+        'durationSec': s.activeDurationSeconds,
+        'totalSesi': s.totalSesiToday,
+        'totalVolume': s.totalVolumeTodayMl,
+        'flowRate': s.flowRateMlPerSec,
+        'dailyTarget': s.dailyTargetMl,
+        'connState': s.connectionState,
+        'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      };
+      await _db.saveDeviceSnapshot(
+        mac,
+        capturedAt: DateTime.now(),
+        payload: payload,
+      );
+    } catch (_) {
+      // Penyimpanan snapshot paling buruk gagal diam-diam: tidak boleh
+      // mengganggu alur refresh yang sedang berjalan.
     }
   }
 

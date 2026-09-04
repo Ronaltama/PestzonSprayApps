@@ -9,6 +9,11 @@ class SprayLog {
   final String status; // 'Success', 'Failed'
   final String communicationMethod; // 'BLE', 'MQTT', 'Local'
 
+  /// Identitas perangkat pemilik log (MAC / `device_key` pada DB). Dipakai
+  /// untuk menghimpun riwayat per perangkat (M2). Kosong/null berarti legacy
+  /// & akan disimpan sebagai `'default'`.
+  final String? deviceKey;
+
   SprayLog({
     this.id,
     required this.timestamp,
@@ -19,6 +24,7 @@ class SprayLog {
     required this.mode,
     required this.status,
     required this.communicationMethod,
+    this.deviceKey,
   });
 
   Map<String, dynamic> toMap() {
@@ -32,6 +38,7 @@ class SprayLog {
       'mode': mode,
       'status': status,
       'communicationMethod': communicationMethod,
+      'device_key': deviceKey ?? 'default',
     };
   }
 
@@ -46,6 +53,7 @@ class SprayLog {
       mode: map['mode'] as String? ?? 'Manual',
       status: map['status'] as String? ?? 'Success',
       communicationMethod: map['communicationMethod'] as String? ?? 'BLE',
+      deviceKey: map['device_key'] as String?,
     );
   }
 }

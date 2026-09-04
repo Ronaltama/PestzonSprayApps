@@ -4,6 +4,7 @@ import 'services/bluetooth_service.dart';
 import 'services/database_helper.dart';
 import 'services/mqtt_service.dart';
 import 'services/device_repository.dart';
+import 'services/esp_device_registry.dart';
 import 'services/theme_provider.dart';
 import 'screens/main_navigation_screen.dart';
 
@@ -30,6 +31,14 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<MqttService>(
           create: (_) => MqttService(),
+        ),
+        ChangeNotifierProvider<EspDeviceRegistry>(
+          create: (_) {
+            final registry = EspDeviceRegistry();
+            // Muat perangkat tersimpan saat app dimulai (registry persisten).
+            registry.reload();
+            return registry;
+          },
         ),
       ],
       child: ChangeNotifierProxyProvider2<BluetoothService, MqttService,

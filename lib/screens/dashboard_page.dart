@@ -7,10 +7,14 @@ import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/database_helper.dart';
 import '../services/device_repository.dart';
+import '../services/esp_device_registry.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
+import '../models/esp_device.dart';
 import '../models/spray_log.dart';
+import '../widgets/device_card.dart';
 import '../utils/app_notification.dart';
+import '../utils/app_format.dart';
 import 'day_detail_overview_page.dart';
 import 'weekly_detail_overview_page.dart';
 
@@ -33,16 +37,37 @@ class _DashboardPageState extends State<DashboardPage> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final deviceRepo = Provider.of<DeviceRepository>(context);
 
+    final registry = Provider.of<EspDeviceRegistry>(context);
+    final devices = registry.devices;
+
     final isBleConnected = btService.isConnected;
     final isMqttConnected = mqttService.isConnected && mqttService.isEspOnline;
     final isDark = themeProvider.isDarkMode;
-
-    // Status berasal dari perangkat via repositori (BLE dulu, fallback MQTT),
-    // bukan estimasi lokal.
     final status = deviceRepo.summary;
+    final hasDevices = devices.isNotEmpty;
+
+    // Bila tak ada device tersimpan → tampilan lama satu-perangkat penuh
+    final List<Widget> legacySections = [
+      _buildHeroDayCard(context, status, isDark),
+      const SizedBox(height: AppTheme.spacingLG),
+      _buildStatisticChartCard(
+        context,
+        dbHelper,
+        status,
+        deviceRepo,
+        isDark,
+      ),
+      const SizedBox(height: AppTheme.spacingLG),
+      _buildSolarBatteryCard(
+          context, status, isBleConnected, isMqttConnected, isDark),
+      const SizedBox(height: AppTheme.spacingLG),
+      _buildPumpControlCard(context, btService, mqttService, dbHelper, status,
+          isBleConnected, isMqttConnected, isDark),
+    ];
 
     return Scaffold(
-      backgroundColor: isDark ? ThemeProvider.darkBgColor : const Color(0xFFF6F8F6),
+      backgroundColor:
+          isDark ? ThemeProvider.darkBgColor : const Color(0xFFF6F8F6),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(
@@ -51,34 +76,139 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. HEADER (Profile & Interactive Connection Badge)
-              _buildHeader(context, isBleConnected, isMqttConnected, dbHelper, btService, mqttService, isDark),
+            children: <Widget>[
+              // HEADER (Profile & Interactive Connection Badge)
+              _buildHeader(context, isBleConnected, isMqttConnected, dbHelper,
+                  btService, mqttService, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
-              // 2. HERO DAY CARD with Top-Right Navigation Arrow & Smooth Auto-Scrolling Ticker
-              _buildHeroDayCard(context, status, isDark),
-              const SizedBox(height: AppTheme.spacingLG),
-
-              // 3. STATISTIC BAR CHART (Moved directly below date card)
-              _buildStatisticChartCard(
-                context,
-                dbHelper,
-                status,
-                deviceRepo,
-                isDark,
-              ),
-              const SizedBox(height: AppTheme.spacingLG),
-
-              // 4. SOLAR & BATTERY CARD (Sistem Daya Kebun)
-              _buildSolarBatteryCard(context, status, isBleConnected, isMqttConnected, isDark),
-              const SizedBox(height: AppTheme.spacingLG),
-
-              // 5. PUMP CONTROL CARD
-              _buildPumpControlCard(context, btService, mqttService, dbHelper, status, isBleConnected, isMqttConnected, isDark),
-              const SizedBox(height: 80),
+              if (hasDevices)
+                ..._buildFleetBody(
+                    context, registry, devices, btService, dbHelper, isDark)
+              else
+                ...legacySections,
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // --- M3: tampilan armada (daftar kartu per perangkat registry) ---
+  List<Widget> _buildFleetBody(
+    BuildContext context,
+    EspDeviceRegistry registry,
+    List<EspDevice> devices,
+    BluetoothService btService,
+    DatabaseHelper dbHelper,
+    bool isDark,
+  ) {
+    final titleColor = isDark ? Colors.white : AppTheme.textDark;
+    final sub = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    final accent =
+        isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
+    final liveCount =
+        devices.where((d) => d.deviceKey == btService.activeDeviceKey).length;
+    final result = <Widget>[
+      // Ringkasan armada
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Armada Perangkat',
+                  style: TextStyle(
+                      fontFamily: 'Utendo',
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                      letterSpacing: -0.5)),
+              Text('${devices.length} perangkat · $liveCount tersambung (Live)',
+                  style:
+                      TextStyle(fontFamily: 'Utendo', color: sub, fontSize: 12)),
+            ],
+          ),
+          Icon(Icons.sensors, color: accent, size: 24),
+        ],
+      ),
+      const SizedBox(height: 14),
+      if (devices.isEmpty)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          decoration: BoxDecoration(
+            color: isDark ? ThemeProvider.darkCardColor : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            'Belum ada perangkat tersimpan. Gunakan tab Perangkat untuk memindai.',
+            style: TextStyle(fontFamily: 'Utendo', color: sub, fontSize: 13),
+          ),
+        )
+      else
+        ...devices.map((dev) => DeviceCard(
+              device: dev,
+              snapshotFuture: dbHelper.latestDeviceSnapshot(dev.deviceKey),
+              isLive: btService.isConnected &&
+                  dev.deviceKey == btService.activeDeviceKey,
+              onShowDetail: () => AppNotification.show(
+                  context,
+                  'Detail perangkat akan tersedia pada tahap berikutnya (M4).'),
+              onSprayNow: (btService.isConnected &&
+                      dev.deviceKey == btService.activeDeviceKey)
+                  ? () => _fleetSprayNow(context, btService, dbHelper, isDark)
+                  : null,
+            )),
+      const SizedBox(height: 6),
+    ];
+
+    return result;
+  }
+
+  Future<void> _fleetSprayNow(BuildContext context, BluetoothService btService,
+      DatabaseHelper dbHelper, bool isDark) async {
+    double dur = _selectedDuration;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setState) => AlertDialog(
+          title: const Text('Semprot Sekarang',
+              style: TextStyle(fontFamily: 'Utendo')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Durasi: ${dur.round()} detik',
+                  style: const TextStyle(fontFamily: 'Utendo')),
+              Slider(
+                min: 5,
+                max: 180,
+                divisions: 35,
+                value: dur.clamp(5, 180),
+                onChanged: (v) => setState(() => dur = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Batal', style: TextStyle(fontFamily: 'Utendo')),
+            ),
+            FilledButton(
+              onPressed: dur <= 0
+                  ? null
+                  : () {
+                      Navigator.pop(dialogCtx);
+                      _selectedDuration = dur;
+                      btService.startSpraying(
+                        durationSeconds: dur.round(),
+                        dbHelper: dbHelper,
+                        mode: 'Manual',
+                      );
+                    },
+              child: const Text('Mulai', style: TextStyle(fontFamily: 'Utendo')),
+            ),
+          ],
         ),
       ),
     );
@@ -97,7 +227,8 @@ class _DashboardPageState extends State<DashboardPage> {
     final totalVolume = '${status.totalVolumeTodayMl.toInt()} ml';
     final totalSesi = '${status.totalSesiToday}';
     final battery = '${status.batteryPercentage}%';
-    const pumpDebit = '5.0 ml/s';
+    // Debit pompa tidak lagi konstan: default 0 sampai ESP mengirim `flowRate`.
+    final pumpDebit = '${status.flowRateMlPerSec.toStringAsFixed(1)} ml/s';
 
     return Container(
       width: double.infinity,
@@ -825,7 +956,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Target 1.500 ml',
+                          'Target ${AppFormat.thousands(status.dailyTargetMl)} ml',
                           style: TextStyle(
                             fontFamily: 'Utendo',
                             fontSize: 11,
