@@ -204,6 +204,18 @@ class DatabaseHelper extends ChangeNotifier {
     return maps.map((m) => SprayLog.fromMap(m)).toList();
   }
 
+  /// Riwayat semprot milik perangkat tertentu (urut terbaru dulu).
+  Future<List<SprayLog>> getLogsForDevice(String deviceKey) async {
+    final db = await instance.database;
+    final maps = await db.query(
+      'spray_logs',
+      where: 'device_key = ?',
+      whereArgs: [deviceKey],
+      orderBy: 'timestamp DESC',
+    );
+    return maps.map((m) => SprayLog.fromMap(m)).toList();
+  }
+
   Future<void> clearAllLogs() async {
     final db = await instance.database;
     await db.delete('spray_logs');
@@ -255,6 +267,38 @@ class DatabaseHelper extends ChangeNotifier {
       await txn.delete('spray_schedules');
       for (final s in schedules) {
         final row = s.toMap();
+        if (s.id == null) {
+          row.remove('id');
+        }
+        await txn.insert('spray_schedules', row);
+      }
+    });
+    notifyListeners();
+  }
+
+  /// Daftar jadwal milik perangkat tertentu (`device_key == [deviceKey]`).
+  Future<List<SpraySchedule>> getSchedulesForDevice(String deviceKey) async {
+    final db = await instance.database;
+    final maps = await db.query(
+      'spray_schedules',
+      where: 'device_key = ?',
+      whereArgs: [deviceKey],
+      orderBy: 'hour ASC, minute ASC',
+    );
+    return maps.map((m) => SpraySchedule.fromMap(m)).toList();
+  }
+
+  /// Tulis kembali daftar jadwal penuh milik [deviceKey] (hapus lalu isi), 
+  /// sehingga perangkat-perangkat tidak saling menimpa seperti sebelumnya.
+  Future<void> replaceSchedulesForDevice(
+      String deviceKey, List<SpraySchedule> schedules) async {
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      await txn.delete('spray_schedules',
+          where: 'device_key = ?', whereArgs: [deviceKey]);
+      for (final s in schedules) {
+        final row = s.toMap();
+        row['device_key'] = deviceKey;
         if (s.id == null) {
           row.remove('id');
         }

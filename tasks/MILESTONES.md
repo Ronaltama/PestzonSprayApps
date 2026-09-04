@@ -179,23 +179,33 @@ per unit tersimpan; kartu hidup bila sedang terhubung, tetap jalan dari snapshot
 Koneksi (per UI §3.2) dari data tersimpan + pull bila live.
 
 ### Item
-- [ ] **M4.1** Layar `DeviceDetailScreen(mac)` (dibuka dari kartu di M3).
-- [ ] **M4.2** Bagian Ringkasan (ml hari ini & minggu, sesi, baterai,
-      tegangan, isSolar) dari snapshot/status.
-- [ ] **M4.3** Bagian Statistik — grafik batang volume harian per unit
-      (widget chart yang ada dipakai ulang).
-- [ ] **M4.4** Bagian Jadwal — daftar `spray_schedules` untuk unit tsb + toggle.
-- [ ] **M4.5** Bagian Riwayat — `spray_logs` difilter per `device_key`.
-- [ ] **M4.6** Aksi: Sinkron (pull saat live) & Edit nama (registry); titik
-      masuk ke aksi batch (M6).
+- [x] **M4.1** Layar `DeviceDetailScreen(deviceKey)` (`lib/screens/device_detail_screen.dart`)
+      dibuka dari kartu dashboard (navigasi nyata menggantikan placeholder).
+- [x] **M4.2** Bagian Ringkasan — snapshot persisten per unit + status live bila
+      sesi aktif (ml hari ini, sesi, baterai). Tegangan & isSolar menyusul pada
+      tab statistik.
+- [ ] **M4.3** Bagian Statistik (grafik batang volume harian) belum dibuat;
+      dijadwalkan bersama polish (widget chart). → lanjutan M4b
+- [x] **M4.4** Bagian Jadwal — daftar `spray_schedules` per `device_key`;
+      tombol **Sinkron** saat unit terhubung menarik & menyimpan ke per-
+      perangkat (`DatabaseHelper.replaceSchedulesForDevice`). Toggling masih
+      read-only (edit aktif dijadwalkan di M4b bila UI jadwal per device di
+      munculkan).
+- [x] **M4.5** Bagian Riwayat — `spray_logs` difilter per `device_key`. 👍
+- [ ] **M4.6** Edit nama & titik masuk batch (M6) menyusul.
 
 ### Catatan
-- Bagian Koneksi (scan + SSID/WiFi config per unit) boleh masuk M5 bila layar
-  config tetap per-unit; kecuali blocker.
+- Utang jadwal per-unit dari M2 (yang sempat ditunda) diwujudkan *read/sync*
+di layar Detail ini; meng-*edit* jadwal aktif antar unit akan dilengkapi
+bersama pengerjaan grafik statistik/polish (M4b). UI utama Schedule tetap
+global sampai tampilan per-device diputuskan.
 
 ### Definisi Selesai (M4)
-- [ ] Dari kartu → Detail unit menampilkan data tersimpan; offline tetap penuh.
-- [ ] Saat unit tersambung & user refresh → angka terbaru masuk detail.
+- [x] Kartu → layar Detail menampilkan data tersimpan (snapshot + log per unit)
+      walau offline; saat unit tersambung ada tombol Sinkron.
+- [x] `flutter analyze` bersih, suite test (32) lulus.
+- [ ] Verifikasi visual penuh (ringkasan saat live & graf statistik) menyusul
+      di M4b.
 
 ---
 

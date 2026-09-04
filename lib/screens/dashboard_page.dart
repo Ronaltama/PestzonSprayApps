@@ -16,6 +16,7 @@ import '../widgets/device_card.dart';
 import '../utils/app_notification.dart';
 import '../utils/app_format.dart';
 import 'day_detail_overview_page.dart';
+import 'device_detail_screen.dart';
 import 'weekly_detail_overview_page.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -152,9 +153,12 @@ class _DashboardPageState extends State<DashboardPage> {
               snapshotFuture: dbHelper.latestDeviceSnapshot(dev.deviceKey),
               isLive: btService.isConnected &&
                   dev.deviceKey == btService.activeDeviceKey,
-              onShowDetail: () => AppNotification.show(
-                  context,
-                  'Detail perangkat akan tersedia pada tahap berikutnya (M4).'),
+              onShowDetail: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          DeviceDetailScreen(deviceKey: dev.deviceKey),
+                    ),
+                  ),
               onSprayNow: (btService.isConnected &&
                       dev.deviceKey == btService.activeDeviceKey)
                   ? () => _fleetSprayNow(context, btService, dbHelper, isDark)
