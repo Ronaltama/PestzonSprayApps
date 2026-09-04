@@ -5,6 +5,7 @@ import '../models/device_ack.dart';
 import '../models/device_status.dart';
 import '../models/daily_volume_stat.dart';
 import '../models/spray_schedule.dart';
+import '../models/batch_result.dart';
 import 'bluetooth_service.dart';
 import 'mqtt_service.dart';
 import 'database_helper.dart';
@@ -397,6 +398,37 @@ class DeviceRepository extends ChangeNotifier {
       ));
     }
     return result;
+  }
+
+  // ---- M6: Semprot Sekarang ke beberapa unit (batch) ----
+  /// Kirim *Semprot Sekarang* ke [deviceKeys] secara berurutan pada perangkat
+  /// yang sedang terjangkau (sesi BLE aktif). Karena media BLE hanya memegang
+  /// satu sambungan (M1), unit yang bukan sesi aktif dianggap tidak terjangkau
+  /// sekarang → dilaporkan di [BatchSprayResult.skipped], bukan ditunda.
+  Future<BatchSprayResult> sprayNowBatch(
+    List<String> deviceKeys, {
+    required int durationSeconds,
+  }) async {
+    final started = <String>[];
+    final skipped = <String>[];
+    if (durationSeconds <= 0) {
+      return BatchSprayResult(
+          started: const [], skipped: List.of(deviceKeys));
+    }
+    for (final key in deviceKeys) {
+      final reachable = _bt.isConnected && _bt.activeDeviceKey == key;
+      if (reachable) {
+        _bt.startSpraying(
+          durationSeconds: durationSeconds,
+          dbHelper: _db,
+          mode: 'Batch',
+        );
+        started.add(key);
+      } else {
+        skipped.add(key);
+      }
+    }
+    return BatchSprayResult(started: started, skipped: skipped);
   }
 
   @override

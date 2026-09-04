@@ -29,6 +29,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   double _selectedDuration = 30.0;
   int _selectedBarIndex = DateTime.now().weekday - 1;
+  bool _batchBusy = false;
 
   @override
   Widget build(BuildContext context) {
@@ -133,6 +134,7 @@ class _DashboardPageState extends State<DashboardPage> {
           Icon(Icons.sensors, color: accent, size: 24),
         ],
       ),
+      if (liveCount > 0) ...[const SizedBox(height: 12), _batchSemprotButton(context, devices), const SizedBox(height: 6)],
       const SizedBox(height: 14),
       if (devices.isEmpty)
         Container(
@@ -216,6 +218,90 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
       ),
     );
+  }
+
+  // --- tombol “Semprot yang Live” (M6 batch ringkas) ---
+  Widget _batchSemprotButton(BuildContext context, List<EspDevice> devices) {
+    return Row(children: [
+      Expanded(
+        child: OutlinedButton.icon(
+          onPressed:
+              _batchBusy ? null : () => _runBatchNow(context, devices),
+          icon: _batchBusy
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.water_drop, size: 16),
+          label: const Text('Semprot semua yang Live',
+              style: TextStyle(fontFamily: 'Utendo')),
+        ),
+      ),
+    ]);
+  }
+
+  Future<void> _runBatchNow(BuildContext context, List<EspDevice> devices) async {
+    final bt = context.read<BluetoothService>();
+    final liveKeys = devices
+        .where((d) => d.deviceKey == bt.activeDeviceKey)
+        .map((d) => d.deviceKey)
+        .toList();
+    if (liveKeys.isEmpty) return;
+
+    double dur = _selectedDuration.clamp(5, 180).toDouble();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Semprot Batch',
+              style: TextStyle(fontFamily: 'Utendo')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Durasi: ${dur.round()} detik',
+                  style: const TextStyle(fontFamily: 'Utendo')),
+              const SizedBox(height: 8),
+              Text('${liveKeys.length} perangkat Live akan disemprot.',
+                  style: const TextStyle(fontFamily: 'Utendo', fontSize: 12)),
+              Slider(
+                min: 5,
+                max: 180,
+                divisions: 35,
+                value: dur,
+                onChanged: (v) => setState(() => dur = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Batal',
+                    style: TextStyle(fontFamily: 'Utendo'))),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Mulai',
+                    style: TextStyle(fontFamily: 'Utendo'))),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+
+    final repo = context.read<DeviceRepository>();
+    setState(() => _batchBusy = true);
+    try {
+      final result =
+          await repo.sprayNowBatch(liveKeys, durationSeconds: dur.round());
+      if (mounted) {
+        AppNotification.show(
+          context,
+          'Semprot dimulai: ${result.started.length} unit · ${result.skipped.length} tak terjangkau.',
+          isError: result.started.isEmpty,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _batchBusy = false);
+    }
   }
 
   // --- HERO DAY SUMMARY CARD (With Top-Right Arrow & Auto-Slide Animation) ---

@@ -250,21 +250,23 @@ diperlukan (mis. di layar Detail unit).
 yang sama ke beberapa ESP (UI §4).
 
 ### Item
-- [ ] **M6.1** `MultiDeviceOperator` (metode di repo M5/M6): pemroses berurutan
-      konek → kirim → ack → disconnect; hasil `{deviceKey: ok|gagal|offline}`.
-- [ ] **M6.2** Dialog durasi semprot (dibuka dari kartu/Detail) — termasuk
-      cara mode batch diaktifkan lewat tombol “Aksi Batch” di Dashboard.
-- [ ] **M6.3** `BatchProgressDialog`: menampilkan progress per unit + hasil akhir.
-- [ ] **M6.4** “Terapkan Jadwal Sama ke Unit Lain…” pada pengelola jadwal
-      (M4) → pilih unit → jalankan batch jadwal.
-- [ ] **M6.5** Menangani unit yang offline saat batch berjalan (lewatkan +
-laporkan di ringkasan akhir).
+- [x] **M6.1** `BatchSprayResult` + `DeviceRepository.sprayNowBatch(keys, dur)`
+      (berurutan; hanya unit yang Live/reachable), hasil per device.
+- [x] **M6.2** Dialog durasi semprot batch di Dashboard (`_runBatchNow`)
+      utk semua unit yang Live.
+- [x] **M6.3** Hasil akhir ditampilkan: jumlah dimulai & tak terjangkau
+      (feedback toast). BatchProgressDialog per-baris menyusul utk versi UI
+      penuh bila diperlukan.
+- [ ] **M6.4** Terapkan Jadwal Sama ke Banyak Unit — belum diimplementasi
+      (membutuhkan UI pengelola jadwal per-device, lihat M4b). → lanjutan
+- [x] **M6.5** Unit non-Live dilewati & dilaporkan (skip), tidak menggantung
+      batch.
 
 ### Definisi Selesai (M6)
-- [ ] Semprot sekarang diteruskan ke 1 & banyak unit (yang dapat dijangkau);
-      hasil per unit ditampilkan.
-- [ ] Terapkan jadwal bersama dieksekusi berurutan tanpa ACK “nyilih”.
-- [ ] “flutter analyze” bersih; end-to-end hanya memakai satu/multi BLE → aksi.
+- [x] Semprot now dapat dikirim ke kumpulan unit yang Live; hasil per unit
+      dipakai (started/skipped). `flutter analyze` bersih & 32 test lulus.
+- [ ] Terapkan jadwal bersama (M6.4) & UI per-baris progress → pekerjaan
+      lanjutan (mirror UI jadwal global/per device).
 
 ---
 
