@@ -263,14 +263,22 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                   fontFamily: 'Utendo',
                   color: isDark ? Colors.grey.shade400 : Colors.grey,
                   fontSize: 12))),
+          FilledButton.icon(
+            onPressed: () => _addScheduleForThisDevice(accent, isDark),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Tambah', style: TextStyle(fontFamily: 'Utendo')),
+            style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: isDark ? ThemeProvider.blackColor : Colors.white),
+          ),
+          const SizedBox(width: 8),
           if (syncAllowed)
-            FilledButton.icon(
+            OutlinedButton.icon(
               onPressed: () => _syncSchedulesNow(),
               icon: const Icon(Icons.sync, size: 16),
               label: const Text('Sinkron', style: TextStyle(fontFamily: 'Utendo')),
             ),
         ]),
       ),
+      const SizedBox(height: 8),
       Expanded(
         child: FutureBuilder<List<SpraySchedule>>(
           future: _schedules(),
@@ -282,13 +290,22 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             final scheds = snap.data ?? const <SpraySchedule>[];
             if (scheds.isEmpty) {
               return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  syncAllowed
-                      ? 'Belum ada jadwal tersimpan utk unit ini. Ketuk “Sinkron” untuk menarik dari perangkat.'
-                      : 'Belum ada jadwal tersimpan utk unit ini. Sambungkan unit BLE lalu ketuk Sinkron.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontFamily: 'Utendo', color: Colors.grey),
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.alarm_off_outlined, size: 48, color: Colors.grey.shade600),
+                      const SizedBox(height: 12),
+                      Text(
+                        syncAllowed
+                            ? 'Belum ada jadwal tersimpan untuk unit ini.\nKetuk "+ Tambah" di atas untuk membuat jadwal baru, atau ketuk "Sinkron" untuk menarik dari ESP32.'
+                            : 'Belum ada jadwal tersimpan untuk unit ini.\nKetuk "+ Tambah" di atas untuk membuat jadwal lokal.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontFamily: 'Utendo', color: Colors.grey.shade400, fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }
@@ -316,14 +333,49 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                         Text(s.title,
                             style: TextStyle(fontFamily: 'Utendo',
                                 fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppTheme.textDark)),
-                        Text('${s.hour}:${s.minute.toString().padLeft(2, '0')} · ${s.durationSeconds} dtk',
+                        Text('${s.hour.toString().padLeft(2, '0')}:${s.minute.toString().padLeft(2, '0')} WIB · ${s.durationSeconds} dtk',
                             style: TextStyle(fontFamily: 'Utendo', color: Colors.grey, fontSize: 12)),
                       ])),
-                      Text(s.isActive ? 'Aktif' : 'Off',
-                          style: TextStyle(
-                              fontFamily: 'Utendo',
-                              fontSize: 12,
-                              color: s.isActive ? accent : Colors.grey)),
+                      Switch(
+                        value: s.isActive,
+                        activeColor: accent,
+                        onChanged: (val) async {
+                          final db = context.read<DatabaseHelper>();
+                          final repo = context.read<DeviceRepository>();
+                          final bt = context.read<BluetoothService>();
+                          if (s.id != null) {
+                            await (await db.database).update(
+                              'spray_schedules',
+                              {'isActive': val ? 1 : 0},
+                              where: 'id = ?',
+                              whereArgs: [s.id],
+                            );
+                            final isConnected = bt.isConnected && bt.activeDeviceKey == widget.deviceKey;
+                            if (isConnected) {
+                              final updatedList = await db.getSchedulesForDevice(widget.deviceKey);
+                              await repo.pushSchedules(updatedList);
+                            }
+                            if (mounted) setState(() {});
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                        onPressed: () async {
+                          final db = context.read<DatabaseHelper>();
+                          final repo = context.read<DeviceRepository>();
+                          final bt = context.read<BluetoothService>();
+                          if (s.id != null) {
+                            await (await db.database).delete('spray_schedules', where: 'id = ?', whereArgs: [s.id]);
+                            final isConnected = bt.isConnected && bt.activeDeviceKey == widget.deviceKey;
+                            if (isConnected) {
+                              final updatedList = await db.getSchedulesForDevice(widget.deviceKey);
+                              await repo.pushSchedules(updatedList);
+                            }
+                            if (mounted) setState(() {});
+                          }
+                        },
+                      ),
                     ]),
                   ),
               ],
@@ -332,6 +384,145 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         ),
       ),
     ]);
+  }
+
+  void _addScheduleForThisDevice(Color primaryAccent, bool isDark) {
+    final titleController = TextEditingController(text: 'Semprot Otomatis');
+    TimeOfDay selectedTime = TimeOfDay.now();
+    double durationSeconds = 30.0;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: const Text('Tambah Jadwal Perangkat',
+                  style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama Jadwal',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    tileColor: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
+                    leading: Icon(Icons.access_time, color: primaryAccent),
+                    title: const Text('Waktu Semprot',
+                        style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold)),
+                    subtitle: Text(selectedTime.format(context),
+                        style: const TextStyle(fontFamily: 'Utendo')),
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: selectedTime,
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          selectedTime = picked;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Durasi:',
+                          style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold)),
+                      Text('${durationSeconds.toInt()} Detik',
+                          style: TextStyle(
+                              fontFamily: 'Utendo',
+                              fontWeight: FontWeight.bold,
+                              color: primaryAccent)),
+                    ],
+                  ),
+                  Slider(
+                    value: durationSeconds,
+                    min: 5,
+                    max: 120,
+                    divisions: 23,
+                    activeColor: primaryAccent,
+                    onChanged: (val) {
+                      setDialogState(() {
+                        durationSeconds = val;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Batal',
+                      style: TextStyle(fontFamily: 'Utendo', color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryAccent,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () async {
+                    final title = titleController.text.trim();
+                    if (title.isEmpty) return;
+                    final db = context.read<DatabaseHelper>();
+                    final repo = context.read<DeviceRepository>();
+                    final bt = context.read<BluetoothService>();
+
+                    final newSched = SpraySchedule(
+                      title: title,
+                      hour: selectedTime.hour,
+                      minute: selectedTime.minute,
+                      durationSeconds: durationSeconds.toInt(),
+                      isActive: true,
+                    );
+
+                    final row = newSched.toMap();
+                    row['device_key'] = widget.deviceKey;
+                    if (row['id'] == null) row.remove('id');
+                    await (await db.database).insert('spray_schedules', row);
+
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+
+                    final isConnected = bt.isConnected && bt.activeDeviceKey == widget.deviceKey;
+                    if (isConnected) {
+                      final updatedList = await db.getSchedulesForDevice(widget.deviceKey);
+                      await repo.pushSchedules(updatedList);
+                      if (mounted) {
+                        AppNotification.show(
+                            context, 'Jadwal ditambahkan & terkirim ke ESP32.',
+                            isError: false);
+                      }
+                    } else {
+                      if (mounted) {
+                        AppNotification.show(
+                            context, 'Jadwal ditambahkan lokal (ESP32 offline).',
+                            isError: false);
+                      }
+                    }
+
+                    if (mounted) setState(() {});
+                  },
+                  child: const Text('Simpan',
+                      style: TextStyle(
+                          fontFamily: 'Utendo',
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _syncSchedulesNow() async {
@@ -355,8 +546,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
   // Riwayat per perangkat
   Widget _buildHistory(Color cardBg, bool isDark) {
+    final db = context.watch<DatabaseHelper>();
     return FutureBuilder<List<SprayLog>>(
-      future: context.read<DatabaseHelper>().getLogsForDevice(widget.deviceKey),
+      future: db.getLogsForDevice(widget.deviceKey),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(strokeWidth: 2));

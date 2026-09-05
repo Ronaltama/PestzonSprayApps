@@ -45,15 +45,43 @@ class SprayLog {
   factory SprayLog.fromMap(Map<String, dynamic> map) {
     return SprayLog(
       id: map['id'] as int?,
-      timestamp: DateTime.parse(map['timestamp'] as String),
-      durationSeconds: map['durationSeconds'] as int,
-      volumeMl: (map['volumeMl'] as num).toDouble(),
-      batteryPercentage: map['batteryPercentage'] as int,
-      isSolarCharging: (map['isSolarCharging'] as int) == 1,
+      timestamp: map['timestamp'] != null && (map['timestamp'] as String).isNotEmpty
+          ? DateTime.tryParse(map['timestamp'] as String) ?? DateTime.now()
+          : DateTime.now(),
+      durationSeconds: (map['durationSeconds'] as num?)?.toInt() ?? 0,
+      volumeMl: (map['volumeMl'] as num?)?.toDouble() ?? 0.0,
+      batteryPercentage: (map['batteryPercentage'] as num?)?.toInt() ?? 0,
+      isSolarCharging: map['isSolarCharging'] == 1 || map['isSolarCharging'] == true,
       mode: map['mode'] as String? ?? 'Manual',
       status: map['status'] as String? ?? 'Success',
       communicationMethod: map['communicationMethod'] as String? ?? 'BLE',
       deviceKey: map['device_key'] as String?,
+    );
+  }
+
+  SprayLog copyWith({
+    int? id,
+    DateTime? timestamp,
+    int? durationSeconds,
+    double? volumeMl,
+    int? batteryPercentage,
+    bool? isSolarCharging,
+    String? mode,
+    String? status,
+    String? communicationMethod,
+    String? deviceKey,
+  }) {
+    return SprayLog(
+      id: id ?? this.id,
+      timestamp: timestamp ?? this.timestamp,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
+      volumeMl: volumeMl ?? this.volumeMl,
+      batteryPercentage: batteryPercentage ?? this.batteryPercentage,
+      isSolarCharging: isSolarCharging ?? this.isSolarCharging,
+      mode: mode ?? this.mode,
+      status: status ?? this.status,
+      communicationMethod: communicationMethod ?? this.communicationMethod,
+      deviceKey: deviceKey ?? this.deviceKey,
     );
   }
 }

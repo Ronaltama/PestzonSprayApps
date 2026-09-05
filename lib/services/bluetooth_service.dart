@@ -172,7 +172,7 @@ class BluetoothService extends ChangeNotifier {
   }
 
   Future<void> stopScan() async {
-    if (!kIsWeb) {
+    if (!kIsWeb && _isScanning) {
       await fbp.FlutterBluePlus.stopScan();
     }
     _isScanning = false;
@@ -198,17 +198,36 @@ class BluetoothService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Stop scan and let bluetooth controller settle
-      await stopScan();
-      await Future.delayed(const Duration(milliseconds: 200));
+      // Stop scan if active and let bluetooth controller settle
+      if (_isScanning) {
+        await stopScan();
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
 
       // Instant direct connection (autoConnect: false). Timeout lebih panjang
       // (12s) karena ESP32 BLE kadang lambat init pada koneksi pertama setelah
       // daya baru / nyala ulang.
-      await device.connect(
-        timeout: const Duration(seconds: 12),
-        autoConnect: false,
-      );
+      try {
+        await device.connect(
+          timeout: const Duration(seconds: 12),
+          autoConnect: false,
+        );
+      } catch (e) {
+        final errStr = e.toString();
+        // Jika BlueZ Linux belum me-resolve proxy DBus device (Bad state: No element),
+        // jalankan scan cepat 2 detik untuk memaksa BlueZ meregistrasi proxy, lalu coba lagi.
+        if (errStr.contains('No element') || errStr.contains('NotReady')) {
+          if (kDebugMode) print('BLE: BlueZ proxy not ready, quick re-scan to resolve proxy...');
+          await fbp.FlutterBluePlus.startScan(timeout: const Duration(seconds: 2));
+          await Future.delayed(const Duration(milliseconds: 500));
+          await device.connect(
+            timeout: const Duration(seconds: 12),
+            autoConnect: false,
+          );
+        } else {
+          rethrow;
+        }
+      }
       _connectedDevice = device;
       _connectedDeviceName = device.platformName.isNotEmpty
           ? device.platformName
@@ -264,6 +283,9 @@ class BluetoothService extends ChangeNotifier {
       final errStr = e.toString();
       if (errStr.contains('ProfileUnavailable') || errStr.contains('BREDR')) {
         _onDisconnected(customMessage: 'Gagal: Gunakan Firmware ESP32 BLE');
+      } else if (errStr.contains('No element') || errStr.contains('NotReady')) {
+        _onDisconnected(
+            customMessage: 'ESP32 sedang restart / Bluetooth sibuk. Coba klik Sambungkan lagi.');
       } else if (errStr.toLowerCase().contains('timeout') ||
           errStr.toLowerCase().contains('timed out')) {
         _onDisconnected(
@@ -378,6 +400,16 @@ class BluetoothService extends ChangeNotifier {
         case 'schedules':
           _schedulesStreamController.add(SpraySchedule.listFromDevicePayload(
               json['schedules'] as List? ?? const []));
+        case 'log':
+          try {
+            final log = SprayLog.fromMap(json).copyWith(
+              deviceKey: _activeDeviceKey ?? 'default',
+            );
+            DatabaseHelper.instance.insertLog(log);
+            notifyListeners();
+          } catch (e) {
+            if (kDebugMode) print('Error processing BLE log: $e');
+          }
         case 'ack':
           _ackStreamController.add(DeviceAck.fromJson(json));
         default:
@@ -435,9 +467,19 @@ class BluetoothService extends ChangeNotifier {
 
   // ---- Request/Response (kontrak perangkat baru) ----
 
-  /// Minta ringkasan hari ini dari ESP (volume, sesi, baterai, dll).
+  /// Minta ringkasan hari ini dari ESP (volume, sesi, baterai, dll) sekaligus sinkron waktu.
   void requestSummary() {
-    _sendBleEnvelope({'v': 1, 't': 'get_summary'});
+    final now = DateTime.now();
+    _sendBleEnvelope({
+      'v': 1,
+      't': 'get_summary',
+      'year': now.year,
+      'month': now.month,
+      'day': now.day,
+      'hour': now.hour,
+      'minute': now.minute,
+      'second': now.second,
+    });
   }
 
   /// Minta statistik volume per hari pada rentang tanggal (inklusif).
@@ -452,7 +494,25 @@ class BluetoothService extends ChangeNotifier {
 
   /// Minta daftar jadwal semprot yang tersimpan di ESP.
   void requestSchedules() {
-    _sendBleEnvelope({'v': 1, 't': 'get_schedules'});
+    final now = DateTime.now();
+    _sendBleEnvelope({
+      'v': 1,
+      't': 'get_schedules',
+      'year': now.year,
+      'month': now.month,
+      'day': now.day,
+      'hour': now.hour,
+      'minute': now.minute,
+      'second': now.second,
+    });
+  }
+
+  /// Minta riwayat penyemprotan yang tersimpan di Flash NVS ESP.
+  void requestLogs() {
+    _sendBleEnvelope({
+      'v': 1,
+      't': 'get_logs',
+    });
   }
 
   /// Tulis daftar jadwal penuh ke ESP (tambah/hapus/nyalakan/matikan).
@@ -504,9 +564,10 @@ class BluetoothService extends ChangeNotifier {
     );
     notifyListeners();
 
-    // Send START command via BLE to ESP32
-    _sendBleMessage({
+    // Send START command via BLE to ESP32 with newline delimiter
+    _sendBleEnvelope({
       'cmd': 'START',
+      'action': 'spray',
       'duration': durationSeconds,
       'mode': mode,
     });
@@ -553,8 +614,8 @@ class BluetoothService extends ChangeNotifier {
   void stopSpraying() {
     _sprayTimer?.cancel();
     
-    // Send STOP command via BLE to ESP32
-    _sendBleMessage({'cmd': 'STOP'});
+    // Send STOP command via BLE to ESP32 with newline delimiter
+    _sendBleEnvelope({'cmd': 'STOP', 'action': 'stop'});
     
     _deviceStatus = _deviceStatus.copyWith(
       isPumpRunning: false,

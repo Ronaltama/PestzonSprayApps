@@ -48,6 +48,9 @@ class DatabaseHelper extends ChangeNotifier {
       version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
+      onOpen: (db) async {
+        await _upgradeDB(db, 0, 3);
+      },
     );
   }
 
@@ -117,6 +120,10 @@ class DatabaseHelper extends ChangeNotifier {
       Database db, int oldVersion, int? newVersion) async {
     // Jalankan DDL v2 untuk memastikan kolom/tabel/indeks ada.
     // (idempoten via IF NOT EXISTS / pemeriksaan kolom di bawah)
+    await _ensureColumn(db, 'spray_logs', 'status',
+        "TEXT NOT NULL DEFAULT 'Success'");
+    await _ensureColumn(db, 'spray_logs', 'communicationMethod',
+        "TEXT NOT NULL DEFAULT 'BLE'");
     await _ensureColumn(db, 'spray_logs', 'device_key',
         "TEXT NOT NULL DEFAULT 'default'");
     await _ensureColumn(db, 'spray_schedules', 'device_key',
@@ -193,6 +200,7 @@ class DatabaseHelper extends ChangeNotifier {
   // --- SPRAY LOGS CRUD ---
   Future<int> insertLog(SprayLog log) async {
     final db = await instance.database;
+    await _upgradeDB(db, 0, 3);
     final id = await db.insert('spray_logs', log.toMap());
     notifyListeners();
     return id;
@@ -209,8 +217,8 @@ class DatabaseHelper extends ChangeNotifier {
     final db = await instance.database;
     final maps = await db.query(
       'spray_logs',
-      where: 'device_key = ?',
-      whereArgs: [deviceKey],
+      where: 'LOWER(device_key) = ? OR device_key = ?',
+      whereArgs: [deviceKey.toLowerCase(), 'default'],
       orderBy: 'timestamp DESC',
     );
     return maps.map((m) => SprayLog.fromMap(m)).toList();
@@ -281,8 +289,8 @@ class DatabaseHelper extends ChangeNotifier {
     final db = await instance.database;
     final maps = await db.query(
       'spray_schedules',
-      where: 'device_key = ?',
-      whereArgs: [deviceKey],
+      where: 'LOWER(device_key) = ? OR device_key = ?',
+      whereArgs: [deviceKey.toLowerCase(), 'default'],
       orderBy: 'hour ASC, minute ASC',
     );
     return maps.map((m) => SpraySchedule.fromMap(m)).toList();

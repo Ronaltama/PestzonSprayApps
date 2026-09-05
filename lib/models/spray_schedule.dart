@@ -71,8 +71,8 @@ class SpraySchedule {
   /// Parse daftar jadwal dari payload response `{"t":"schedules","schedules":[...]}`.
   static List<SpraySchedule> listFromDevicePayload(List<dynamic> items) {
     return items
-        .whereType<Map<String, dynamic>>()
-        .map(SpraySchedule.fromDeviceJson)
+        .whereType<Map>()
+        .map((e) => SpraySchedule.fromDeviceJson(Map<String, dynamic>.from(e)))
         .toList();
   }
 

@@ -13,32 +13,38 @@ class AppNotification {
     IconData? icon,
     Duration displayDuration = const Duration(seconds: 2),
   }) {
-    // Remove active notification if present
-    _currentEntry?.remove();
-    _currentEntry = null;
+    if (!context.mounted) return;
+    try {
+      // Remove active notification if present
+      _currentEntry?.remove();
+      _currentEntry = null;
 
-    final overlay = Overlay.of(context, rootOverlay: true);
+      final overlay = Overlay.maybeOf(context, rootOverlay: true);
+      if (overlay == null) return;
 
-    late OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (context) {
-        return _BouncingToastWidget(
-          message: message,
-          isError: isError,
-          icon: icon,
-          displayDuration: displayDuration,
-          onDismissed: () {
-            if (_currentEntry == entry) {
-              entry.remove();
-              _currentEntry = null;
-            }
-          },
-        );
-      },
-    );
+      late OverlayEntry entry;
+      entry = OverlayEntry(
+        builder: (context) {
+          return _BouncingToastWidget(
+            message: message,
+            isError: isError,
+            icon: icon,
+            displayDuration: displayDuration,
+            onDismissed: () {
+              if (_currentEntry == entry) {
+                entry.remove();
+                _currentEntry = null;
+              }
+            },
+          );
+        },
+      );
 
-    _currentEntry = entry;
-    overlay.insert(entry);
+      _currentEntry = entry;
+      overlay.insert(entry);
+    } catch (_) {
+      // Ignore ancestor lookup errors when context is deactivated during modal pop / async returns
+    }
   }
 }
 

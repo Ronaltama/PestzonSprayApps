@@ -6,6 +6,8 @@ class DeviceStatus {
   final int activeDurationSeconds;
   final int totalSesiToday;
   final double totalVolumeTodayMl;
+  final double flowRateMlPerSec;
+  final double dailyTargetMl;
   final String connectionState; // 'Connected (BLE)', 'Connected (MQTT)', 'Disconnected'
 
   DeviceStatus({
@@ -16,6 +18,8 @@ class DeviceStatus {
     this.activeDurationSeconds = 0,
     this.totalSesiToday = 0,
     this.totalVolumeTodayMl = 0.0,
+    this.flowRateMlPerSec = 0.0,
+    this.dailyTargetMl = 0.0,
     this.connectionState = 'Disconnected',
   });
 
@@ -28,6 +32,8 @@ class DeviceStatus {
       activeDurationSeconds: (json['durationSec'] as num?)?.toInt() ?? 0,
       totalSesiToday: (json['totalSesi'] as num?)?.toInt() ?? 0,
       totalVolumeTodayMl: (json['totalVolume'] as num?)?.toDouble() ?? 0.0,
+      flowRateMlPerSec: (json['flowRate'] as num?)?.toDouble() ?? 0.0,
+      dailyTargetMl: (json['dailyTarget'] as num?)?.toDouble() ?? 0.0,
       connectionState: json['connState'] as String? ?? 'Disconnected',
     );
   }
@@ -40,6 +46,8 @@ class DeviceStatus {
     int? activeDurationSeconds,
     int? totalSesiToday,
     double? totalVolumeTodayMl,
+    double? flowRateMlPerSec,
+    double? dailyTargetMl,
     String? connectionState,
   }) {
     return DeviceStatus(
@@ -50,6 +58,8 @@ class DeviceStatus {
       activeDurationSeconds: activeDurationSeconds ?? this.activeDurationSeconds,
       totalSesiToday: totalSesiToday ?? this.totalSesiToday,
       totalVolumeTodayMl: totalVolumeTodayMl ?? this.totalVolumeTodayMl,
+      flowRateMlPerSec: flowRateMlPerSec ?? this.flowRateMlPerSec,
+      dailyTargetMl: dailyTargetMl ?? this.dailyTargetMl,
       connectionState: connectionState ?? this.connectionState,
     );
   }

@@ -99,7 +99,11 @@ class _SchedulePageState extends State<SchedulePage> {
           isError: true);
       return;
     }
-    final schedules = await _db!.getAllSchedules();
+    final bt = context.read<BluetoothService>();
+    final activeKey = bt.activeDeviceKey;
+    final schedules = activeKey != null
+        ? await _db!.getSchedulesForDevice(activeKey)
+        : await _db!.getAllSchedules();
     final ack = await _repo!.pushSchedules(schedules);
     if (!mounted) return;
     if (ack == null) {
@@ -440,6 +444,9 @@ class _SchedulePageState extends State<SchedulePage> {
                   onPressed: () async {
                     final title = titleController.text.trim();
                     if (title.isEmpty) return;
+                    final bt = context.read<BluetoothService>();
+                    final activeKey = bt.activeDeviceKey ?? 'default';
+
                     final newSched = SpraySchedule(
                       title: title,
                       hour: selectedTime.hour,
@@ -447,7 +454,11 @@ class _SchedulePageState extends State<SchedulePage> {
                       durationSeconds: durationSeconds.toInt(),
                       isActive: true,
                     );
-                    await _db!.insertSchedule(newSched);
+                    final row = newSched.toMap();
+                    row['device_key'] = activeKey;
+                    if (row['id'] == null) row.remove('id');
+                    await (await _db!.database).insert('spray_schedules', row);
+
                     if (dialogContext.mounted) {
                       Navigator.pop(dialogContext);
                     }

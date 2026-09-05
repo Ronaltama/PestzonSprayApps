@@ -46,11 +46,10 @@ class MyApp extends StatelessWidget {
         create: (context) => DeviceRepository(
           bluetoothService: context.read<BluetoothService>(),
           mqttService: context.read<MqttService>(),
-          // TODO(dev-demo): Aktifkan MENJELANG pratinjau UI tanpa hardware.
           // Menghasilkan statistik dummy acak 60–67 ml per hari pada chart
           // DASHBOARD ketika perangkat tidak terhubung. Matikan (false) sebelum
           // rilis — data dummy hanya tampil saat offline.
-          enableDemoData: true,
+          enableDemoData: false,
         ),
         update: (context, bt, mqtt, previous) => previous!,
         child: Consumer<ThemeProvider>(
