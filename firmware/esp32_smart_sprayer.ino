@@ -381,19 +381,6 @@ void sendAck(const char* cmd, const char* status) {
   sendBleJson(doc);
 }
 
-void sendLog(int durationSec, float volumeMl, const char* mode) {
-  StaticJsonDocument<300> doc;
-  doc["t"] = "log";
-  doc["timestamp"] = "";
-  doc["durationSeconds"] = durationSec;
-  doc["volumeMl"] = volumeMl;
-  doc["batteryPercentage"] = 0;
-  doc["isSolarCharging"] = 0;
-  doc["mode"] = mode;
-  doc["status"] = "Sukses";
-  doc["communicationMethod"] = "BLE";
-  sendBleJson(doc);
-}
 
 // --------------------------------------------------------------------------------------
 // CONTROL FUNCTIONS
