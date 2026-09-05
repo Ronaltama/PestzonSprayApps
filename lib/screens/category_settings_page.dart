@@ -571,7 +571,7 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
   void _showAboutDialog(BuildContext context) {
     showAboutDialog(
       context: context,
-      applicationName: 'Smart Sprayer AI & IoT',
+      applicationName: 'Pestzon Spray AI & IoT',
       applicationVersion: '1.0.1',
       applicationIcon: Container(
         padding: const EdgeInsets.all(8),

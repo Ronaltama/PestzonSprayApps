@@ -455,7 +455,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
               Text(
-                'Smart Sprayer AI',
+                'Pestzon Spray AI',
                 style: TextStyle(
                   fontFamily: 'Utendo',
                   fontSize: 20,

@@ -252,7 +252,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 isDark: isDark,
                 icon: Icons.info_outline,
                 title: 'Informasi Aplikasi',
-                subtitle: 'Versi v1.0.1, Panduan & Tentang Smart Sprayer',
+                subtitle: 'Versi v1.0.1, Panduan & Tentang Pestzon Spray',
                 onTap: () {
                   Navigator.push(
                     context,

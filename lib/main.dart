@@ -55,7 +55,7 @@ class MyApp extends StatelessWidget {
         child: Consumer<ThemeProvider>(
           builder: (context, themeProvider, child) {
             return MaterialApp(
-              title: 'Smart Sprayer AI & IoT',
+              title: 'Pestzon Spray AI & IoT',
               debugShowCheckedModeBanner: false,
               theme: themeProvider.darkThemeData,
               darkTheme: themeProvider.darkThemeData,
