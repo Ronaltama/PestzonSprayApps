@@ -524,6 +524,15 @@ class BluetoothService extends ChangeNotifier {
     });
   }
 
+  /// Kirim suntikan kalibrasi debit (flow rate dalam ml/detik) ke ESP.
+  void sendCalibration({required double flowRate}) {
+    _sendBleEnvelope({
+      'v': 1,
+      'cmd': 'set_calibration',
+      'flowRate': flowRate,
+    });
+  }
+
   void _onDisconnected({String customMessage = 'Tidak Terhubung'}) {
     _notifySubscription?.cancel();
     _connectionSubscription?.cancel();

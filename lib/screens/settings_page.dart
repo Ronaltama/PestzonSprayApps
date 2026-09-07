@@ -183,7 +183,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 isDark: isDark,
                 icon: Icons.psychology,
                 title: 'Penyemprotan & AI',
-                subtitle: 'Durasi Default, Dosis AI & Peringatan Tangki',
+                subtitle: 'Kalibrasi Debit, Durasi Default & Dosis AI',
                 onTap: () {
                   Navigator.push(
                     context,

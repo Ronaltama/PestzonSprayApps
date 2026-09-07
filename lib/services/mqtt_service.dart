@@ -278,6 +278,14 @@ class MqttService extends ChangeNotifier {
     publishCommand(topicConfig, config.toJson());
   }
 
+  void sendCalibration({required double flowRate}) {
+    publishCommand(topicCommand, {
+      'v': 1,
+      'cmd': 'set_calibration',
+      'flowRate': flowRate,
+    });
+  }
+
   void syncSchedules(List<SpraySchedule> schedules) {
     if (!_isConnected) {
       debugPrint('Not connected, cannot sync schedules');

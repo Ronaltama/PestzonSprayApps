@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/mqtt_service.dart';
+import '../services/bluetooth_service.dart';
 import '../services/database_helper.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
@@ -25,7 +27,6 @@ class CategorySettingsPage extends StatefulWidget {
 class _CategorySettingsPageState extends State<CategorySettingsPage> {
   // Local states
   bool _autoConnect = true;
-  bool _aiRecommendationEnabled = true;
   bool _lowTankWarning = true;
   bool _scheduleNotification = true;
   bool _alertSound = true;
@@ -229,20 +230,18 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
             onTap: () => _showDurationPicker(),
           ),
           Divider(height: 1, indent: 56, color: Colors.grey.shade800),
-          SwitchListTile(
-            value: _aiRecommendationEnabled,
-            onChanged: (val) => setState(() => _aiRecommendationEnabled = val),
-            activeTrackColor: ThemeProvider.greenAccentColor,
-            activeThumbColor: ThemeProvider.blackColor,
+          ListTile(
+            leading: buildIconBox(Icons.tune),
             title: const Text(
-              'Mode Rekomendasi Dosis AI',
+              'Kalibrasi Debit Pompa (Flow Rate)',
               style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
             ),
             subtitle: Text(
-              'Hitung dosis otomatis berdasarkan kondisi lingkungan',
-              style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: subtitleColor),
+              'Hitung & suntik debit semprotan (ml/s) ke ESP32',
+              style: TextStyle(fontFamily: 'Utendo', color: subtitleColor),
             ),
-            secondary: buildIconBox(Icons.auto_awesome),
+            trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            onTap: () => _showCalibrationDialog(context),
           ),
           Divider(height: 1, indent: 56, color: Colors.grey.shade800),
           SwitchListTile(
@@ -588,6 +587,350 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
           style: TextStyle(fontFamily: 'Utendo', fontSize: 13),
         ),
       ],
+    );
+  }
+
+  void _showCalibrationDialog(BuildContext context) {
+    final btService = Provider.of<BluetoothService>(context, listen: false);
+    final mqttService = Provider.of<MqttService>(context, listen: false);
+
+    double currentFlowRate = btService.deviceStatus.flowRateMlPerSec > 0
+        ? btService.deviceStatus.flowRateMlPerSec
+        : 15.0;
+
+    final flowRateController = TextEditingController(
+      text: currentFlowRate.toStringAsFixed(1),
+    );
+    final measuredVolumeController = TextEditingController();
+
+    int activeTab = 0;
+    bool isTestingSpray = false;
+    int testCountdown = 10;
+    Timer? countdownTimer;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            void sendCalibration(double rate) {
+              if (btService.isConnected) {
+                btService.sendCalibration(flowRate: rate);
+              } else if (mqttService.isConnected && mqttService.isEspOnline) {
+                mqttService.sendCalibration(flowRate: rate);
+              }
+              AppNotification.show(
+                context,
+                'Menyuntikkan kalibrasi ${rate.toStringAsFixed(1)} ml/detik ke ESP32...',
+              );
+              Navigator.pop(dialogContext);
+            }
+
+            void start10sTest() {
+              if (isTestingSpray) return;
+              final dbHelper = Provider.of<DatabaseHelper>(context, listen: false);
+              if (btService.isConnected) {
+                btService.startSpraying(
+                  durationSeconds: 10,
+                  dbHelper: dbHelper,
+                  mode: 'Kalibrasi',
+                );
+              } else if (mqttService.isConnected && mqttService.isEspOnline) {
+                mqttService.startSpraying(durationSeconds: 10);
+              } else {
+                AppNotification.show(
+                  context,
+                  'Perangkat tidak terhubung (BLE / MQTT).',
+                );
+                return;
+              }
+
+              setDialogState(() {
+                isTestingSpray = true;
+                testCountdown = 10;
+              });
+
+              countdownTimer?.cancel();
+              countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+                setDialogState(() {
+                  if (testCountdown > 1) {
+                    testCountdown--;
+                  } else {
+                    t.cancel();
+                    isTestingSpray = false;
+                  }
+                });
+              });
+            }
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: ThemeProvider.greenAccentColor,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.tune, color: ThemeProvider.blackColor, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Kalibrasi Debit Pompa',
+                    style: TextStyle(
+                      fontFamily: 'Utendo',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Atur debit semprotan (ml/detik) agar perhitungan volume presisi sesuai jenis nozzle & pompa.',
+                      style: TextStyle(
+                        fontFamily: 'Utendo',
+                        fontSize: 12,
+                        color: Colors.grey.shade400,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setDialogState(() => activeTab = 0),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: activeTab == 0
+                                    ? ThemeProvider.greenAccentColor
+                                    : Colors.grey.shade800,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Input Manual',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontFamily: 'Utendo',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: activeTab == 0
+                                      ? ThemeProvider.blackColor
+                                      : Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setDialogState(() => activeTab = 1),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: activeTab == 1
+                                    ? ThemeProvider.greenAccentColor
+                                    : Colors.grey.shade800,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Wizard Uji (10s)',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontFamily: 'Utendo',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: activeTab == 1
+                                      ? ThemeProvider.blackColor
+                                      : Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (activeTab == 0) ...[
+                      const Text(
+                        'Debit Pompa Terkalibrasi (ml/detik):',
+                        style: TextStyle(
+                          fontFamily: 'Utendo',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: flowRateController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(fontFamily: 'Utendo', color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Contoh: 18.0',
+                          hintStyle: TextStyle(color: Colors.grey.shade600),
+                          suffixText: 'ml/detik',
+                          suffixStyle: const TextStyle(color: ThemeProvider.greenAccentColor),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade800),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.black38,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade800),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Langkah 1: Siapkan wadah/gelas ukur di bawah nozzle.',
+                              style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: Colors.white70),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Langkah 2: Tekan tombol di bawah untuk semprot 10 detik.',
+                              style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: Colors.white70),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isTestingSpray
+                                      ? Colors.orange
+                                      : ThemeProvider.greenAccentColor,
+                                  foregroundColor: ThemeProvider.blackColor,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                icon: Icon(isTestingSpray ? Icons.hourglass_top : Icons.play_arrow),
+                                label: Text(
+                                  isTestingSpray
+                                      ? 'Menyemprot... ($testCountdown detik)'
+                                      : 'Jalankan Uji Semprot (10s)',
+                                  style: const TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold),
+                                ),
+                                onPressed: isTestingSpray ? null : start10sTest,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Langkah 3: Masukkan air tertampung (ml):',
+                        style: TextStyle(
+                          fontFamily: 'Utendo',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: measuredVolumeController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(fontFamily: 'Utendo', color: Colors.white),
+                        onChanged: (val) {
+                          final ml = double.tryParse(val) ?? 0.0;
+                          if (ml > 0) {
+                            final calculatedRate = ml / 10.0;
+                            flowRateController.text = calculatedRate.toStringAsFixed(1);
+                            setDialogState(() {});
+                          }
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Contoh: 180 (untuk 180 ml)',
+                          hintStyle: TextStyle(color: Colors.grey.shade600),
+                          suffixText: 'ml',
+                          suffixStyle: const TextStyle(color: ThemeProvider.greenAccentColor),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade800),
+                          ),
+                        ),
+                      ),
+                      if ((double.tryParse(measuredVolumeController.text) ?? 0) > 0) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: ThemeProvider.greenAccentColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle_outline, color: ThemeProvider.greenAccentColor, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Hasil Debit: ${flowRateController.text} ml/detik',
+                                  style: const TextStyle(
+                                    fontFamily: 'Utendo',
+                                    fontWeight: FontWeight.bold,
+                                    color: ThemeProvider.greenAccentColor,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    countdownTimer?.cancel();
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Batal', style: TextStyle(fontFamily: 'Utendo', color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: ThemeProvider.greenAccentColor,
+                    foregroundColor: ThemeProvider.blackColor,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    final rate = double.tryParse(flowRateController.text) ?? 0.0;
+                    if (rate <= 0) {
+                      AppNotification.show(context, 'Masukkan nilai debit valid (> 0 ml/s).');
+                      return;
+                    }
+                    countdownTimer?.cancel();
+                    sendCalibration(rate);
+                  },
+                  child: const Text('Simpan & Suntik ESP32', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

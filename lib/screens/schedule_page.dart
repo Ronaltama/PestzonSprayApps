@@ -6,6 +6,7 @@ import '../services/device_repository.dart';
 import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/theme_provider.dart';
+import '../services/notification_service.dart';
 import '../theme/theme.dart';
 import '../utils/app_notification.dart';
 
@@ -118,6 +119,26 @@ class _SchedulePageState extends State<SchedulePage> {
       return;
     }
     _notify(successMessage);
+
+    // Sinkronkan notifikasi harian HP dengan jadwal terbaru
+    _syncNotifications(schedules);
+  }
+
+  /// Sinkronkan notifikasi lokal HP berdasarkan jadwal aktif.
+  Future<void> _syncNotifications(List<SpraySchedule> schedules) async {
+    final notifService = context.read<NotificationService>();
+    await notifService.syncScheduleNotifications(
+      schedules: schedules
+          .map((s) => {
+                'id': s.id,
+                'hour': s.hour,
+                'minute': s.minute,
+                'durationSeconds': s.durationSeconds,
+                'isActive': s.isActive,
+              })
+          .toList(),
+      scheduleNotifEnabled: true,
+    );
   }
 
   @override

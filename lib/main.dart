@@ -6,10 +6,15 @@ import 'services/mqtt_service.dart';
 import 'services/device_repository.dart';
 import 'services/esp_device_registry.dart';
 import 'services/theme_provider.dart';
+import 'services/notification_service.dart';
 import 'screens/main_navigation_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Inisialisasi NotificationService sebelum runApp
+  await NotificationService().initialize();
+
   runApp(const MyApp());
 }
 
@@ -31,6 +36,9 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<MqttService>(
           create: (_) => MqttService(),
+        ),
+        ChangeNotifierProvider<NotificationService>(
+          create: (_) => NotificationService(),
         ),
         ChangeNotifierProvider<EspDeviceRegistry>(
           create: (_) {

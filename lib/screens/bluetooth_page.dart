@@ -5,6 +5,7 @@ import '../services/bluetooth_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/esp_device_registry.dart';
 import '../services/theme_provider.dart';
+import '../services/notification_service.dart';
 import '../models/device_config.dart';
 import '../models/esp_device.dart';
 import '../theme/theme.dart';
@@ -36,14 +37,21 @@ class _BluetoothPageState extends State<BluetoothPage> {
   }
 
   void _syncConfigToBle(BluetoothService btService) {
+    final ssid = _ssidController.text.trim();
+    if (ssid.isEmpty) {
+      AppNotification.show(context, 'SSID WiFi tidak boleh kosong!', isError: true);
+      return;
+    }
     final config = DeviceConfig(
-      ssid: _ssidController.text.trim(),
+      ssid: ssid,
       password: _pwdController.text.trim(),
       mqttEnabled: true,
       sprayDurationSeconds: _sprayDuration.toInt(),
     );
     btService.sendConfiguration(config);
-    AppNotification.show(context, 'Konfigurasi WiFi dikirim ke ESP32 via BLE!');
+    AppNotification.show(context, 'Konfigurasi WiFi "$ssid" dikirim ke ESP32 via BLE!');
+    // Kirim notifikasi sistem HP
+    context.read<NotificationService>().notifyWifiConfigSent(ssid);
   }
 
   void _connectMqtt(MqttService mqttService) {
