@@ -1,4 +1,4 @@
-package com.example.alburdat_dashboard
+package com.pestzon.spray
 
 import io.flutter.embedding.android.FlutterActivity
 

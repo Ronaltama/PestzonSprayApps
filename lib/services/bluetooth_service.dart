@@ -594,10 +594,14 @@ class BluetoothService extends ChangeNotifier {
         // semprot selesai (DeviceRepository memicu refreshSummary).
         final estimatedVolumeMl = durationSeconds * 5.0; // 5 ml/detik debit pompa misting
 
+        // update optimistic di lokal agar UI Ringkasan langsung merespon (menunggu tertimpa hasil get_summary dari ESP nanti).
         _deviceStatus = _deviceStatus.copyWith(
           isPumpRunning: false,
           activeDurationSeconds: 0,
+          totalVolumeTodayMl: _deviceStatus.totalVolumeTodayMl + estimatedVolumeMl,
+          totalSesiToday: _deviceStatus.totalSesiToday + 1,
         );
+        _summaryStreamController.add(_deviceStatus); // push ke stream agar statusOf di DeviceRepository & UI Ringkasan terupdate langsung
         notifyListeners();
 
         // SIMPAN KE DATABASE LOKAL HP (SQLite) untuk riwayat

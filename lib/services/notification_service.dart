@@ -34,45 +34,59 @@ class NotificationService extends ChangeNotifier {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // Inisialisasi timezone data
-    tz_data.initializeTimeZones();
-    final jakarta = tz.getLocation('Asia/Jakarta');
-    tz.setLocalLocation(jakarta);
-
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const darwinInit = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
-    const linuxInit = LinuxInitializationSettings(
-      defaultActionName: 'Open',
-    );
-
-    const initSettings = InitializationSettings(
-      android: androidInit,
-      iOS: darwinInit,
-      macOS: darwinInit,
-      linux: linuxInit,
-    );
-
-    await _plugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: _onNotificationTap,
-    );
-
-    // Request permission Android 13+
-    if (Platform.isAndroid) {
-      final androidPlugin =
-          _plugin.resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-      final granted = await androidPlugin?.requestNotificationsPermission();
-      _permissionGranted = granted ?? false;
-    } else {
-      _permissionGranted = true;
+    try {
+      // Inisialisasi timezone data
+      tz_data.initializeTimeZones();
+      final jakarta = tz.getLocation('Asia/Jakarta');
+      tz.setLocalLocation(jakarta);
+    } catch (e) {
+      debugPrint('[NotificationService] Timezone init warning: $e');
     }
 
-    _initialized = true;
+    try {
+      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const darwinInit = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      );
+      const linuxInit = LinuxInitializationSettings(
+        defaultActionName: 'Open',
+      );
+
+      const initSettings = InitializationSettings(
+        android: androidInit,
+        iOS: darwinInit,
+        macOS: darwinInit,
+        linux: linuxInit,
+      );
+
+      await _plugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: _onNotificationTap,
+      );
+
+      _initialized = true;
+
+      // Request permission Android 13+ secara aman
+      if (Platform.isAndroid) {
+        try {
+          final androidPlugin =
+              _plugin.resolvePlatformSpecificImplementation<
+                  AndroidFlutterLocalNotificationsPlugin>();
+          final granted = await androidPlugin?.requestNotificationsPermission();
+          _permissionGranted = granted ?? false;
+        } catch (pe) {
+          debugPrint('[NotificationService] Permission request warning: $pe');
+          _permissionGranted = false;
+        }
+      } else {
+        _permissionGranted = true;
+      }
+    } catch (e) {
+      debugPrint('[NotificationService] Initialize error: $e');
+    }
+
     notifyListeners();
     debugPrint('[NotificationService] Initialized. Permission: $_permissionGranted');
   }

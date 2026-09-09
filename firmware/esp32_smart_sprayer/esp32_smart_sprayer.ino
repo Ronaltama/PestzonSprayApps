@@ -42,6 +42,7 @@
 // HARDWARE CONFIGURATION
 // --------------------------------------------------------------------------------------
 #define PUMP_PIN          23      // Pin Relay Pompa
+#define LED_PIN           4       // Pin Lampu Malam (otomatis)
 #define RELAY_ACTIVE_LOW  false   // Ubah ke true jika relay Anda Active-LOW
 
 // Nominal Debit Pompa (ml/detik) — default 15.0 ml/s, bisa dikalibrasi dari App
@@ -809,7 +810,9 @@ void setup() {
 
   // Setup hardware
   pinMode(PUMP_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
   setRelayState(false); // Pastikan pompa MATI saat boot
+  digitalWrite(LED_PIN, LOW); // Pastikan lampu mati saat boot
 
   // Load semua data dari NVS (tetap ada walau restart)
   loadSchedulesFromNvs();
@@ -866,6 +869,15 @@ void loop() {
   // 1. Update jam internal & cek trigger jadwal otomatis
   updateInternalTime();
   checkSchedules();
+
+  // 1.5 Cek lampu malam otomatis (Menyala 18:00 - 05:59)
+  if (isTimeSynced) {
+    if (currentHour >= 18 || currentHour < 6) {
+      digitalWrite(LED_PIN, HIGH);
+    } else {
+      digitalWrite(LED_PIN, LOW);
+    }
+  }
 
   // 2. Auto-stop pompa jika durasi tercapai
   if (isPumpRunning) {

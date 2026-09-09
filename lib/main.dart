@@ -12,8 +12,12 @@ import 'screens/main_navigation_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inisialisasi NotificationService sebelum runApp
-  await NotificationService().initialize();
+  // Inisialisasi NotificationService secara aman tanpa memblokir runApp
+  try {
+    await NotificationService().initialize();
+  } catch (e) {
+    debugPrint('Failed to initialize NotificationService: $e');
+  }
 
   runApp(const MyApp());
 }
