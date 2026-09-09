@@ -1,7 +1,8 @@
 /*
  * ======================================================================================
  * ESP32 Smart Sprayer Firmware v2.0 (BLE + WiFi + MQTT + Real-Time Scheduler)
- * Designed for Pestzon Spray App (FetCoreApp)
+ * Designed for Pestzon Spray App
+ * Repository: https://github.com/Ronaltama/PestzonSprayApps
  * ======================================================================================
  *
  * KRITERIA PIN:
