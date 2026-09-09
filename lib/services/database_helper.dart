@@ -201,6 +201,19 @@ class DatabaseHelper extends ChangeNotifier {
   Future<int> insertLog(SprayLog log) async {
     final db = await instance.database;
     await _upgradeDB(db, 0, 3);
+    
+    // Check if log already exists based on timestamp and device key to prevent duplication
+    // when requesting logs history upon reconnecting
+    final existing = await db.query(
+      'spray_logs',
+      where: 'timestamp = ? AND device_key = ?',
+      whereArgs: [log.timestamp.toIso8601String(), log.deviceKey ?? 'default'],
+    );
+    
+    if (existing.isNotEmpty) {
+      return existing.first['id'] as int;
+    }
+    
     final id = await db.insert('spray_logs', log.toMap());
     notifyListeners();
     return id;

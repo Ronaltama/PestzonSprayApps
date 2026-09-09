@@ -28,6 +28,7 @@ class DeviceDetailScreen extends StatefulWidget {
 
 class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   String _tab = 'Ringkasan';
+  bool _isLedOn = false;
 
   EspDevice? _device;
 
@@ -201,6 +202,25 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
             _kvRow("Volume hari ini (ml)", _num(live ? statusNow?.totalVolumeTodayMl : 0.0, p['totalVolume'])),
             _kvRow("Sesi hari ini", _num(live ? statusNow?.totalSesiToday : 0, p['totalSesi'])),
             _kvRow("Baterai (%)", _num(live ? statusNow?.batteryPercentage : 0, p['battery'])),
+            
+            if (live) ...[
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Test Lampu Malam (Manual)', style: TextStyle(fontFamily: 'Utendo', fontSize: 13, fontWeight: FontWeight.bold)),
+                  Switch(
+                    value: _isLedOn,
+                    activeColor: accent,
+                    onChanged: (val) {
+                      setState(() => _isLedOn = val);
+                      context.read<BluetoothService>().toggleLed(val);
+                    },
+                  ),
+                ],
+              ),
+            ],
+            
             const SizedBox(height: 8),
             Text(
                 has

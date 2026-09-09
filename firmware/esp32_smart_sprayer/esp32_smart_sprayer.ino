@@ -105,11 +105,12 @@ String wifiSsid     = "";
 String wifiPassword = "";
 String mqttBroker   = MQTT_BROKER;
 
-// Status Operasional Pompa
+// Status Operasional Pompa & Lampu
 bool          isPumpRunning        = false;
 unsigned long sprayStartTime       = 0;
 unsigned long sprayTargetDurationMs = 0;
 String        currentSprayMode     = "Manual";
+bool          forceLedOn           = false; // Kontrol manual dari app
 
 // Real-Time Clock Internal (Disinkronkan dari HP via BLE saat konek)
 unsigned long lastTimeSyncMillis = 0;
@@ -444,31 +445,32 @@ void loadWifiConfigFromNvs() {
 void connectWifi() {
   if (!wifiEnabled || wifiSsid.length() == 0) return;
 
-  Serial.printf("Mencoba konek WiFi ke SSID: %s ...\n", wifiSsid.c_str());
+  Serial.printf("Mencoba konek WiFi ke SSID: %s ... (Non-blocking)\n", wifiSsid.c_str());
+  WiFi.disconnect();
   WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
-
-  unsigned long startAttempt = millis();
-  // Tunggu maksimal 15 detik supaya tidak block BLE
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\nWiFi Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-  } else {
-    Serial.println("\nGagal konek WiFi (timeout). Akan coba ulang nanti...");
-  }
+  
+  lastWifiRetryMs = millis();
 }
 
 void maintainWifi() {
   if (!wifiEnabled) return;
+  static bool wasConnected = false;
+
   if (WiFi.status() != WL_CONNECTED) {
+    if (wasConnected) {
+      wasConnected = false;
+      Serial.println("[WiFi] Koneksi terputus.");
+    }
     if (millis() - lastWifiRetryMs > WIFI_RETRY_INTERVAL) {
       lastWifiRetryMs = millis();
       Serial.println("[WiFi] Reconnecting...");
       WiFi.disconnect();
       WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+    }
+  } else {
+    if (!wasConnected) {
+      wasConnected = true;
+      Serial.printf("\n[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
     }
   }
 }
@@ -743,12 +745,18 @@ void processCommandJson(const String& jsonStr) {
       saveWifiConfigToNvs();
       sendAck("set_wifi", "ok");
       Serial.printf("CONFIG diterima. SSID=%s, akan konek WiFi...\n", wifiSsid.c_str());
-      // Konek WiFi (blocking maksimal 15 detik)
+      // Mulai konek WiFi secara non-blocking
       connectWifi();
-      // Lanjut konek MQTT jika WiFi berhasil
-      if (WiFi.status() == WL_CONNECTED) {
-        connectMqtt();
-      }
+      // Lanjut konek MQTT akan otomatis di-handle oleh maintainMqtt() di dalam loop()
+      // begitu status WiFi.status() == WL_CONNECTED
+    }
+  }
+  // ★ BARU: handler toggle_led — nyalakan/matikan lampu LED secara manual
+  else if (strcmp(typeKey, "toggle_led") == 0) {
+    if (doc.containsKey("state")) {
+      forceLedOn = doc["state"].as<bool>();
+      sendAck("toggle_led", "ok");
+      Serial.printf("Lampu LED manual diubah menjadi: %s\n", forceLedOn ? "ON" : "OFF");
     }
   }
   else {
@@ -870,13 +878,17 @@ void loop() {
   updateInternalTime();
   checkSchedules();
 
-  // 1.5 Cek lampu malam otomatis (Menyala 18:00 - 05:59)
-  if (isTimeSynced) {
+  // 1.5 Cek lampu malam otomatis (Menyala 18:00 - 05:59) atau mode paksa (manual test)
+  if (forceLedOn) {
+    digitalWrite(LED_PIN, HIGH);
+  } else if (isTimeSynced) {
     if (currentHour >= 18 || currentHour < 6) {
       digitalWrite(LED_PIN, HIGH);
     } else {
       digitalWrite(LED_PIN, LOW);
     }
+  } else {
+    digitalWrite(LED_PIN, LOW); // Default mati jika tidak force dan belum sync
   }
 
   // 2. Auto-stop pompa jika durasi tercapai

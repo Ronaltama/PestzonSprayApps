@@ -592,9 +592,10 @@ class BluetoothService extends ChangeNotifier {
         // Pump berhenti. Counter total volume/sesi TIDAK dihitung lokal lagi:
         // nilainya milik ESP dan ditarik via request `get_summary` setelah
         // semprot selesai (DeviceRepository memicu refreshSummary).
-        final estimatedVolumeMl = durationSeconds * 5.0; // 5 ml/detik debit pompa misting
-
         // update optimistic di lokal agar UI Ringkasan langsung merespon (menunggu tertimpa hasil get_summary dari ESP nanti).
+        final flowRate = _deviceStatus.flowRateMlPerSec > 0 ? _deviceStatus.flowRateMlPerSec : 15.0;
+        final estimatedVolumeMl = durationSeconds * flowRate;
+        
         _deviceStatus = _deviceStatus.copyWith(
           isPumpRunning: false,
           activeDurationSeconds: 0,
@@ -604,19 +605,10 @@ class BluetoothService extends ChangeNotifier {
         _summaryStreamController.add(_deviceStatus); // push ke stream agar statusOf di DeviceRepository & UI Ringkasan terupdate langsung
         notifyListeners();
 
-        // SIMPAN KE DATABASE LOKAL HP (SQLite) untuk riwayat
-        final log = SprayLog(
-          timestamp: DateTime.now(),
-          durationSeconds: durationSeconds,
-          volumeMl: estimatedVolumeMl,
-          batteryPercentage: _deviceStatus.batteryPercentage,
-          isSolarCharging: _deviceStatus.isSolarCharging,
-          mode: mode,
-          status: 'Success',
-          communicationMethod: 'BLE',
-          deviceKey: _activeDeviceKey,
-        );
-        await dbHelper.insertLog(log);
+        // LOGGING DISERAHKAN SEPENUHNYA KE ESP32.
+        // ESP32 akan mengirimkan payload {"t": "log"} saat durasi tercapai
+        // dengan volume yang sudah dihitung menggunakan flowRate yang terkalibrasi.
+        // Hal ini mencegah duplikasi dan menghindari penggunaan debit hardcoded.
       } else {
         _deviceStatus = _deviceStatus.copyWith(activeDurationSeconds: remaining);
         notifyListeners();
@@ -635,6 +627,17 @@ class BluetoothService extends ChangeNotifier {
       activeDurationSeconds: 0,
     );
     notifyListeners();
+  }
+
+  void toggleLed(bool state) {
+    if (!_isConnected) return;
+    _sendBleEnvelope({
+      'cmd': 'toggle_led',
+      'state': state,
+    });
+    if (kDebugMode) {
+      print('LED Toggled: $state');
+    }
   }
 
   void sendConfiguration(DeviceConfig config) {
