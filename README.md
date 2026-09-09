@@ -1,464 +1,242 @@
-# 🌿 Smart Sprayer AI & IoT
+<![CDATA[<div align="center">
+
+# 🌿 Pestzon Spray App
+### Smart Sprayer AI & IoT — v1.0.1
 
 **Offline-First & Cloud-Enabled Automatic Solar-Powered Spraying System**
 
-Smart Sprayer AI & IoT adalah sistem penyemprotan otomatis berbasis **ESP32-WROOM-32** yang dirancang untuk kebutuhan pertanian dan lingkungan luar ruangan dengan keterbatasan akses internet. Sistem mengadopsi pendekatan **Offline-First melalui Bluetooth Low Energy (BLE)** serta mendukung **Monitoring dan Kontrol Jarak Jauh melalui MQTT** ketika koneksi internet tersedia.
+[![GitHub Repo](https://img.shields.io/badge/GitHub-PestzonSprayApps-2ea44f?logo=github)](https://github.com/Ronaltama/PestzonSprayApps)
+[![Flutter](https://img.shields.io/badge/Flutter-v3.13-02569B?logo=flutter)](https://flutter.dev)
+[![ESP32](https://img.shields.io/badge/Firmware-ESP32%20Arduino-E7352C?logo=arduino)](https://www.espressif.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Dengan pendekatan ini, alat tetap dapat beroperasi secara mandiri tanpa internet, sekaligus dapat ditingkatkan menjadi perangkat IoT penuh untuk pemantauan dan pengendalian dari mana saja.
-
----
-
-# 🚀 Value Proposition
-
-Sebagian besar solusi IoT pertanian bergantung pada koneksi internet yang stabil. Smart Sprayer AI & IoT dirancang untuk mengatasi permasalahan tersebut dengan menyediakan dua mode operasi:
-
-### 📶 Offline Mode (BLE)
-
-Digunakan ketika pengguna berada di dekat alat.
-
-* Pairing perangkat
-* Konfigurasi alat
-* Sinkronisasi data
-* Pengaturan jadwal
-* Kontrol manual pompa
-* Monitoring status perangkat
-
-### ☁️ Online Mode (MQTT)
-
-Digunakan ketika perangkat terhubung ke internet.
-
-* Monitoring jarak jauh
-* Kontrol pompa dari mana saja
-* Sinkronisasi status perangkat
-* Pengiriman log penyemprotan
-* Update konfigurasi tanpa mendatangi lokasi alat
+</div>
 
 ---
 
-# 🏗️ Arsitektur Sistem
+## 📖 Tentang Proyek Ini
 
-```text
-                 Internet
-                     │
-                     ▼
-             MQTT Broker
-                     ▲
-                     │
-        ┌──────────────────────┐
-        │ Flutter Application  │
-        └──────────────────────┘
-             ▲            ▲
-             │ BLE        │ MQTT
-             │            │
-        ┌──────────────────────┐
-        │ ESP32 Smart Sprayer  │
-        └──────────────────────┘
+**Pestzon Spray App** adalah sistem penyemprotan otomatis berbasis **ESP32-WROOM-32** yang dirancang untuk kebutuhan pertanian dan lingkungan luar ruangan dengan keterbatasan akses internet.
+
+Sistem menggunakan pendekatan **Offline-First via Bluetooth Low Energy (BLE)** dan mendukung **Monitoring & Kontrol Jarak Jauh via MQTT** ketika koneksi internet tersedia — sehingga alat tetap dapat beroperasi secara mandiri tanpa internet, sekaligus bisa ditingkatkan menjadi perangkat IoT penuh.
+
+---
+
+## 🏗️ Arsitektur Sistem
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  PESTZON SPRAY APP                  │
+│              (Flutter Android / iOS)                │
+└──────────────┬──────────────────────┬───────────────┘
+               │ BLE (Offline)        │ MQTT (Online)
+               ▼                      ▼
+┌──────────────────────┐    ┌──────────────────────┐
+│   ESP32 Smart        │◄──►│  Cloud MQTT Broker   │
+│   Sprayer (Firmware) │    │  (broker.emqx.io)    │
+└──────────────────────┘    └──────────────────────┘
+         │
+    ┌────┴─────┐
+    │ Hardware │
+    │ • Relay  │
+    │ • Pompa  │
+    │ • LED    │
+    └──────────┘
 ```
 
-### Saat Offline
+**Mode BLE (Offline):** Digunakan ketika berada dekat dengan alat.
+**Mode MQTT (Online):** Digunakan untuk monitoring & kontrol dari mana saja via internet.
 
-```text
-Flutter App
-     │
-Bluetooth BLE
-     │
-ESP32
+---
+
+## ✨ Fitur Utama
+
+| Fitur | Deskripsi | Mode |
+|-------|-----------|------|
+| 📊 **Dashboard** | Status real-time: baterai, sesi, volume hari ini | BLE / MQTT |
+| 📶 **BLE Pairing** | Scan & koneksi otomatis ke ESP32 | BLE |
+| 🎮 **Manual Spray** | Kontrol pompa manual dengan durasi custom | BLE / MQTT |
+| ⏰ **Jadwal Otomatis** | Jadwal harian tersimpan di ESP32 (tetap jalan tanpa HP) | BLE |
+| 📜 **Riwayat Log** | History penyemprotan (tanggal, waktu, volume, mode) | BLE / MQTT |
+| 📡 **Konfigurasi WiFi** | Kirim SSID & password ke ESP32 via BLE (non-blocking) | BLE |
+| ⚖️ **Kalibrasi Pompa** | Atur debit ml/detik untuk hitung volume akurat | BLE |
+| 💡 **Test Lampu Malam** | Toggle LED secara manual untuk pengujian instan | BLE |
+| 🔄 **Auto-Dedup Log** | Mencegah entri riwayat ganda saat reconnect | BLE |
+
+---
+
+## 🔌 Spesifikasi Hardware
+
+### Mikrokontroler
+| Komponen | Keterangan |
+|----------|------------|
+| **ESP32-WROOM-32** | Mikrokontroler utama (BLE + WiFi) |
+| **Relay Module** | PIN 23 — Kontrol pompa air |
+| **LED Indicator** | PIN 4 — Lampu malam otomatis (18:00–05:59) |
+
+### Sistem Daya (Solar)
+| Komponen | Spesifikasi |
+|----------|-------------|
+| Solar Cell | 5V 2W 400mA |
+| Battery Charger | TP4056 with Protection |
+| Baterai | 18650 × 2, kapasitas 1500mAh |
+| Voltage Regulator | AMS1117 3.3V |
+
+### Sistem Pompa
+| Komponen | Keterangan |
+|----------|------------|
+| Pompa Air | Mini Water Pump 310 DC 5V |
+| Nozzle | Misting Nozzle |
+| Pipa | PVC 22mm + Tee Connector |
+
+---
+
+## 📱 Halaman Aplikasi
+
 ```
-
-### Saat Online
-
-```text
-Flutter App
-     │
-Internet
-     │
-MQTT Broker
-     │
-Internet
-     │
-ESP32
-```
-
-Pengguna tidak perlu mengetahui apakah aplikasi sedang menggunakan BLE atau MQTT. Sistem akan memilih metode komunikasi yang tersedia secara otomatis.
-
----
-
-# ✨ Fitur Utama
-
-## 📊 Dashboard Monitoring
-
-Menampilkan informasi perangkat secara real-time:
-
-* Status perangkat
-* Status koneksi
-* Persentase baterai
-* Tegangan baterai
-* Status pengisian daya panel surya
-* Riwayat penyemprotan terakhir
-* Total aktivitas penyemprotan
-
----
-
-## 📶 Device Management
-
-Mengelola koneksi dan konfigurasi perangkat.
-
-Fitur:
-
-* Scan perangkat BLE
-* Pairing ESP32
-* Sinkronisasi data
-* Konfigurasi WiFi
-* Konfigurasi MQTT
-* Kalibrasi alat
-* Informasi perangkat
-
----
-
-## 🎮 Manual Control
-
-Kontrol penyemprotan secara langsung.
-
-Fitur:
-
-* Start Spray
-* Stop Spray
-* Pengaturan durasi semprot
-* Monitoring status pompa
-
----
-
-## ⏰ Automatic Scheduling
-
-Mengatur jadwal penyemprotan otomatis yang disimpan langsung pada ESP32.
-
-Contoh:
-
-```text
-07:00 - 30 Detik
-12:00 - 15 Detik
-16:00 - 20 Detik
-```
-
-Jadwal tetap berjalan meskipun:
-
-* HP dimatikan
-* Bluetooth tidak aktif
-* Tidak ada koneksi internet
-
----
-
-## 📜 History & Analytics
-
-Riwayat aktivitas penyemprotan tersimpan pada database lokal aplikasi.
-
-Data yang disimpan:
-
-* Tanggal
-* Waktu
-* Durasi semprot
-* Status penyemprotan
-* Status baterai
-* Metode komunikasi (BLE/MQTT)
-
----
-
-# 🗄️ Database Strategy
-
-Sistem menggunakan pendekatan hybrid storage.
-
-## ESP32
-
-Menyimpan:
-
-* Konfigurasi perangkat
-* Jadwal penyemprotan
-* Informasi WiFi
-* Informasi MQTT
-* Buffer log sementara
-
-Media penyimpanan:
-
-```text
-ESP32 NVS (Non Volatile Storage)
+Pestzon Spray App
+├── 🏠  Dashboard       → Status real-time semua perangkat
+├── 📶  Devices         → Scan BLE, Pairing, Konfigurasi WiFi/MQTT
+│   └── Detail Device
+│       ├── 📋 Ringkasan → Volume, Baterai, Sesi + Test Lampu Malam
+│       ├── ⏰ Jadwal   → Buat / Edit / Hapus jadwal per perangkat
+│       └── 📜 Riwayat  → History log semprotan per perangkat
+├── 🎮  Kontrol         → Manual spray + slider durasi
+├── 📅  Jadwal Global   → Semua jadwal lintas perangkat
+└── ⚙️  Pengaturan      → Tema, Kalibrasi, Notifikasi
 ```
 
 ---
 
-## Smartphone
+## 📡 Protokol Komunikasi BLE
 
-Menyimpan:
+### Perintah dari App → ESP32
 
-* Riwayat penyemprotan
-* Data statistik
-* Cache status perangkat
-* Konfigurasi aplikasi
+| Command | Deskripsi | Contoh Payload |
+|---------|-----------|----------------|
+| `SPRAY` | Mulai semprot | `{"cmd":"SPRAY","duration":30}` |
+| `STOP` | Hentikan pompa | `{"cmd":"STOP"}` |
+| `CONFIG` / `set_wifi` | Kirim konfigurasi WiFi | `{"cmd":"CONFIG","ssid":"...","password":"..."}` |
+| `set_schedules` | Kirim semua jadwal | `{"cmd":"set_schedules","schedules":[...]}` |
+| `toggle_led` | Nyala/mati LED manual | `{"cmd":"toggle_led","state":true}` |
+| `set_calibration` | Kalibrasi debit pompa | `{"cmd":"set_calibration","flowRate":15.0}` |
+| `time_sync` | Sinkronisasi jam | `{"cmd":"time_sync","ts":1725000000}` |
 
-Media penyimpanan:
+### Data dari ESP32 → App
 
-```text
-SQLite
+| Type | Deskripsi |
+|------|-----------|
+| `summary` | Status perangkat (baterai, volume, sesi) |
+| `log` | Notifikasi setelah selesai semprot |
+| `schedules` | Daftar jadwal aktif |
+| `ack` | Konfirmasi perintah diterima |
+
+---
+
+## ☁️ Topik MQTT
+
+```
+pestzon/{device_id}/cmd        ← App kirim perintah ke ESP32
+pestzon/{device_id}/status     → ESP32 publish status
+pestzon/{device_id}/log        → ESP32 publish riwayat semprot
+pestzon/{device_id}/response   → ESP32 publish respons perintah
+```
+
+> Default Broker: `broker.emqx.io` — bisa diubah dari aplikasi.
+
+---
+
+## 📁 Struktur Folder Project
+
+```
+FetCoreApp/
+├── lib/
+│   ├── models/          → Device, Log, Schedule, Snapshot
+│   ├── services/        → BluetoothService, DatabaseHelper, DeviceRepository
+│   ├── screens/         → Dashboard, Devices, Detail, Schedule, History
+│   ├── theme/           → AppTheme, ThemeProvider
+│   └── main.dart
+├── firmware/
+│   └── esp32_smart_sprayer/
+│       └── esp32_smart_sprayer.ino   ← Firmware Arduino ESP32
+├── assets/
+│   └── icon/
+├── MANUAL_BOOK.md       ← 📖 Panduan pengguna lengkap
+└── README.md
 ```
 
 ---
 
-# 📡 MQTT Communication
+## 🚀 Cara Setup & Menjalankan
 
-MQTT digunakan hanya ketika perangkat berhasil terhubung ke internet.
-
-## Device Topic Structure
-
-```text
-sprayer/{device_id}/status
-sprayer/{device_id}/command
-sprayer/{device_id}/config
-sprayer/{device_id}/log
+### 1. Clone Repositori
+```bash
+git clone https://github.com/Ronaltama/PestzonSprayApps.git
+cd PestzonSprayApps
 ```
 
-Contoh:
-
-```text
-sprayer/SPRAYER-001/status
-sprayer/SPRAYER-001/command
-sprayer/SPRAYER-001/config
-sprayer/SPRAYER-001/log
+### 2. Install Dependensi Flutter
+```bash
+flutter pub get
 ```
 
----
+### 3. Upload Firmware ke ESP32
+Buka file `firmware/esp32_smart_sprayer/esp32_smart_sprayer.ino` di Arduino IDE.
 
-## Publish Topics
+Install library berikut via Library Manager:
+- `ArduinoJson` (v6 / v7)
+- `PubSubClient` (by Nick O'Leary)
 
-ESP32 mengirim data ke:
+Pilih board **ESP32 Dev Module**, lalu klik **Upload**.
 
-```text
-sprayer/{device_id}/status
-sprayer/{device_id}/log
+### 4. Build & Install APK
+```bash
+flutter build apk
+# File APK: build/app/outputs/flutter-apk/app-release.apk
 ```
 
 ---
 
-## Subscribe Topics
+## ⚙️ Tech Stack
 
-ESP32 menerima perintah dari:
-
-```text
-sprayer/{device_id}/command
-sprayer/{device_id}/config
-```
-
----
-
-## Contoh Command
-
-Topic:
-
-```text
-sprayer/SPRAYER-001/command
-```
-
-Payload:
-
-```json
-{
-  "action": "spray",
-  "duration": 30
-}
-```
+| Layer | Teknologi |
+|-------|-----------|
+| **Mobile App** | Flutter (Dart), Provider |
+| **Database Lokal** | SQLite (sqflite) |
+| **Bluetooth** | flutter_blue_plus |
+| **MQTT Client** | mqtt_client |
+| **Notifikasi** | flutter_local_notifications |
+| **Firmware** | ESP32 Arduino Framework |
+| **Wireless** | BLE (Bluetooth Low Energy) + WiFi |
+| **Cloud Messaging** | MQTT (PubSubClient) |
+| **Storage ESP32** | NVS (Non-Volatile Storage / Preferences) |
 
 ---
 
-# 📱 Struktur Halaman Aplikasi
+## 📄 Dokumentasi Lengkap
 
-## 1. Dashboard
-
-Monitoring perangkat secara real-time.
-
----
-
-## 2. Devices
-
-Manajemen perangkat dan konfigurasi.
+Lihat [**MANUAL_BOOK.md**](./MANUAL_BOOK.md) untuk panduan pengguna lengkap, termasuk:
+- Cara instalasi & pairing
+- Kalibrasi pompa
+- Panduan jadwal otomatis
+- Troubleshooting
 
 ---
 
-## 3. Control
+## 📄 Lisensi
 
-Kontrol penyemprotan manual.
-
----
-
-## 4. Schedule
-
-Manajemen jadwal otomatis.
+Proyek ini menggunakan lisensi **MIT**. Silakan digunakan dan dimodifikasi sesuai kebutuhan.
 
 ---
 
-## 5. History
+<div align="center">
 
-Riwayat dan statistik penyemprotan.
+**🌿 Pestzon Spray App**
 
----
+*Offline-First Smart Agriculture Spraying System*
+*powered by ESP32 · BLE · MQTT · Solar Energy*
 
-# 📁 Struktur Folder Project
+© 2026 Ronaltama — [github.com/Ronaltama/PestzonSprayApps](https://github.com/Ronaltama/PestzonSprayApps)
 
-```text
-lib/
-│
-├── models/
-│   ├── device_status.dart
-│   ├── spray_log.dart
-│   ├── spray_schedule.dart
-│
-├── services/
-│   ├── bluetooth_service.dart
-│   ├── mqtt_service.dart
-│   ├── database_service.dart
-│   └── storage_service.dart
-│
-├── repositories/
-│   ├── device_repository.dart
-│   ├── history_repository.dart
-│   └── schedule_repository.dart
-│
-├── screens/
-│   ├── dashboard/
-│   ├── devices/
-│   ├── control/
-│   ├── schedule/
-│   └── history/
-│
-├── widgets/
-│
-├── providers/
-│
-├── theme/
-│
-└── main.dart
-```
-
----
-
-# 🔌 Supported Hardware
-
-## Microcontroller
-
-* ESP32-WROOM-32
-
----
-
-## Power System
-
-* Solar Cell 5V 2W 400mA
-* TP4056 Battery Charger with Protection
-* 18650 Battery 2x 1500mAh
-* AMS1117 3.3V Voltage Regulator
-
----
-
-## Pump System
-
-* Mini Water Pump 310 DC 5V
-* Misting Nozzle
-* Tee Connector
-* PVC Pipe 22mm
-
----
-
-## Supporting Components
-
-* UV LED 5mm
-* LED Indicator 2835 SMD
-* Capacitor 100nF
-* Resistor 10KΩ
-* Resistor 4.7KΩ
-* Resistor 680Ω
-* Resistor 220Ω–330Ω
-* Pin Header Male/Female
-* Custom PCB
-* Prototype PCB
-* AWG22 Cable
-* 3D Printed Enclosure
-
----
-
-# 🔄 Initial Setup Flow
-
-```text
-Install Application
-        │
-        ▼
-Scan Device BLE
-        │
-        ▼
-Pair ESP32
-        │
-        ▼
-Set Device Name
-        │
-        ▼
-Configure WiFi
-        │
-        ▼
-Sync Configuration
-        │
-        ▼
-ESP32 Connect WiFi
-        │
-        ▼
-ESP32 Connect MQTT
-        │
-        ▼
-Device Online
-```
-
----
-
-# ⚙️ Technology Stack
-
-## Mobile App
-
-* Flutter
-* Dart
-* Provider / Riverpod
-* SQLite
-* Flutter Blue Plus
-* MQTT Client
-
----
-
-## Firmware
-
-* ESP32 Arduino Framework
-* BLE Server
-* WiFi Manager
-* PubSubClient MQTT
-* Preferences (NVS)
-
----
-
-# 🎯 MVP Scope
-
-Versi pertama sistem akan fokus pada:
-
-* Bluetooth BLE Communication
-* WiFi Configuration
-* MQTT Communication
-* Manual Spray Control
-* Automatic Scheduling
-* Battery Monitoring
-* Solar Charging Monitoring
-* Local Data Storage
-* History Synchronization
-* Dashboard Monitoring
-
----
-
-# 📄 License
-
-MIT License
-
----
-
-**Smart Sprayer AI & IoT**
-
-*Offline-First Smart Agriculture Spraying System powered by ESP32, BLE, MQTT, and Solar Energy.*
+</div>
+]]>
