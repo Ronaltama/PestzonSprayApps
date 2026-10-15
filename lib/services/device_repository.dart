@@ -269,7 +269,6 @@ class DeviceRepository extends ChangeNotifier {
     try {
       final okSummary = await refreshSummary();
       final okStats = await refreshStats();
-      if (_bt.isConnected) _bt.requestLogs();
       return okSummary || okStats;
     } finally {
       _refreshInFlight = false;

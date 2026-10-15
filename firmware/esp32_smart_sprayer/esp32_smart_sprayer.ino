@@ -684,7 +684,6 @@ void processCommandJson(const String& jsonStr) {
   // 3. Handler per command type (Case-Insensitive untuk semua protokol)
   if (typeKey.equalsIgnoreCase("get_summary")) {
     sendSummary();
-    sendLogHistory();
   }
   else if (typeKey.equalsIgnoreCase("get_schedules")) {
     sendSchedules();

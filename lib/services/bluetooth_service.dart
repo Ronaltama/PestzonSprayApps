@@ -470,7 +470,7 @@ class BluetoothService extends ChangeNotifier {
 
     if (prevQueue != null) {
       try {
-        await prevQueue;
+        await prevQueue.timeout(const Duration(seconds: 3));
       } catch (_) {}
     }
 
@@ -478,13 +478,15 @@ class BluetoothService extends ChangeNotifier {
       if (!_isConnected || _rxCharacteristic == null) return;
       final bytes = utf8.encode(jsonStr);
 
-      // Ukuran chunk aman untuk BLE ATT MTU:
-      // Standar BLE ATT MTU default adalah 23 byte (maks 20 byte data per write-no-response).
-      // Menulis > 20 byte tanpa negosiasi MTU menyebabkan paket dipotong/dibuang oleh stack BLE Android.
-      // Bila MTU dinegosiasikan lebih besar, gunakan hingga (mtuNow - 3).
+      // Prefer Write WITH response (ATT_WRITE_REQ).
+      // Write with response menjamin bahwa stack Bluetooth ESP32 telah menerima
+      // dan mengonfirmasi paket sebelum paket berikutnya dikirim.
+      // Ini mencegah packet drop dan buffer overflow pada Android BLE.
+      final bool withoutResponse = !_rxCharacteristic!.properties.write;
+
       int maxChunk = 20;
       if (_connectedDevice != null && _connectedDevice!.mtuNow > 23) {
-        maxChunk = (_connectedDevice!.mtuNow - 3).clamp(20, 128);
+        maxChunk = (_connectedDevice!.mtuNow - 3).clamp(20, 240);
       }
 
       for (int i = 0; i < bytes.length; i += maxChunk) {
@@ -493,15 +495,15 @@ class BluetoothService extends ChangeNotifier {
         final chunk = bytes.sublist(i, end);
         await _rxCharacteristic!.write(
           chunk,
-          withoutResponse: _rxCharacteristic!.properties.writeWithoutResponse,
+          withoutResponse: withoutResponse,
         );
         if (end < bytes.length) {
           await Future.delayed(const Duration(milliseconds: 20));
         }
       }
-      if (kDebugMode) print('Sent BLE bytes (${bytes.length} B, chunk $maxChunk): $jsonStr');
+      debugPrint('Sent BLE bytes (${bytes.length} B, chunk $maxChunk, withoutResponse: $withoutResponse): $jsonStr');
     } catch (e) {
-      if (kDebugMode) print('Error writing BLE characteristic: $e');
+      debugPrint('Error writing BLE characteristic: $e');
     } finally {
       completer.complete();
     }
@@ -625,6 +627,7 @@ class BluetoothService extends ChangeNotifier {
     required DatabaseHelper dbHelper,
     String mode = 'Manual',
   }) async {
+    debugPrint('BLE startSpraying requested: duration=$durationSeconds s, mode=$mode');
     if (_deviceStatus.isPumpRunning) return;
 
     _deviceStatus = _deviceStatus.copyWith(

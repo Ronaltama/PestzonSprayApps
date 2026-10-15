@@ -781,94 +781,17 @@ class _DashboardPageState extends State<DashboardPage> {
                       }
 
                       final dur = _selectedDuration.toInt();
-                      final vol = (dur * flowRate).toInt();
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          backgroundColor: isDark ? ThemeProvider.darkCardColor : Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          title: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: primaryAccent,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.water_drop, color: ThemeProvider.blackColor, size: 20),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Mulai Semprot',
-                                style: TextStyle(
-                                  fontFamily: 'Utendo',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                  color: titleColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Pompa misting akan menyemprotkan cairan selama $dur detik.',
-                                style: TextStyle(
-                                  fontFamily: 'Utendo',
-                                  fontSize: 13,
-                                  color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text('Durasi: $dur detik', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor)),
-                                    Text('Volume: ~$vol ml', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: primaryAccent)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('Batal', style: TextStyle(fontFamily: 'Utendo')),
-                            ),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: primaryAccent,
-                                foregroundColor: isDark ? ThemeProvider.blackColor : Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text('Mulai Semprot', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                      );
-
-                      if (confirm == true) {
-                        if (isBle) {
-                          btService.startSpraying(
-                            durationSeconds: dur,
-                            dbHelper: dbHelper,
-                            mode: 'Manual App',
-                          );
-                        } else if (isMqtt) {
-                          mqttService.startSpraying(durationSeconds: dur);
-                        }
-                        if (context.mounted) {
-                          AppNotification.show(context, 'Penyemprotan dimulai ($dur detik)...');
-                        }
+                      if (isBle) {
+                        btService.startSpraying(
+                          durationSeconds: dur,
+                          dbHelper: dbHelper,
+                          mode: 'Manual App',
+                        );
+                      } else if (isMqtt) {
+                        mqttService.startSpraying(durationSeconds: dur);
+                      }
+                      if (context.mounted) {
+                        AppNotification.show(context, 'Penyemprotan dimulai ($dur detik)...');
                       }
                     },
               style: ElevatedButton.styleFrom(
