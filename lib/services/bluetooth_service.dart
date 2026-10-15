@@ -310,19 +310,18 @@ class BluetoothService extends ChangeNotifier {
     _rxCharacteristic = null;
     _txCharacteristic = null;
 
+    // Cari karakteristik berdasarkan UUID NUS (Nordic UART Service) SAJA.
+    // JANGAN gunakan fallback properti write/notify karena akan menerima
+    // semua perangkat BLE (printer, headset, dll) sebagai ESP32 yang valid.
     for (var s in services) {
       for (var c in s.characteristics) {
         final uuidStr = c.uuid.toString().toLowerCase();
         if (uuidStr == rxCharUuid.toLowerCase() ||
-            uuidStr.contains('6e400002') ||
-            c.properties.write ||
-            c.properties.writeWithoutResponse) {
+            uuidStr.contains('6e400002')) {
           _rxCharacteristic ??= c;
         }
         if (uuidStr == txCharUuid.toLowerCase() ||
-            uuidStr.contains('6e400003') ||
-            c.properties.notify ||
-            c.properties.indicate) {
+            uuidStr.contains('6e400003')) {
           _txCharacteristic ??= c;
         }
       }
