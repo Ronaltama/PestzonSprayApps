@@ -673,38 +673,46 @@ void processCommandJson(const String& jsonStr) {
     syncTime(y, mon, d, h, m, s);
   }
 
-  // 2. Parse jenis command ("t", "cmd", atau "action")
-  const char* typeKey = "";
-  if (doc.containsKey("t"))      typeKey = doc["t"];
-  else if (doc.containsKey("cmd"))    typeKey = doc["cmd"];
-  else if (doc.containsKey("action")) typeKey = doc["action"];
+  // 2. Parse jenis command ("t", "type", "cmd", atau "action")
+  String typeKey = "";
+  if (doc.containsKey("t"))           typeKey = doc["t"].as<String>();
+  else if (doc.containsKey("type"))   typeKey = doc["type"].as<String>();
+  else if (doc.containsKey("cmd"))    typeKey = doc["cmd"].as<String>();
+  else if (doc.containsKey("action")) typeKey = doc["action"].as<String>();
+  typeKey.trim();
 
-  // 3. Handler per command type
-  if (strcmp(typeKey, "get_summary") == 0) {
+  // 3. Handler per command type (Case-Insensitive untuk semua protokol)
+  if (typeKey.equalsIgnoreCase("get_summary")) {
     sendSummary();
     sendLogHistory();
   }
-  else if (strcmp(typeKey, "get_schedules") == 0) {
+  else if (typeKey.equalsIgnoreCase("get_schedules")) {
     sendSchedules();
   }
-  else if (strcmp(typeKey, "get_stats") == 0) {
+  else if (typeKey.equalsIgnoreCase("get_stats")) {
     sendStats();
   }
-  else if (strcmp(typeKey, "get_logs") == 0) {
+  else if (typeKey.equalsIgnoreCase("get_logs")) {
     sendLogHistory();
   }
-  else if (strcmp(typeKey, "START") == 0 || strcmp(typeKey, "spray") == 0) {
-    int         duration = doc["duration"] | 10;
-    const char* mode     = doc["mode"]     | "Manual";
+  else if (typeKey.equalsIgnoreCase("START") ||
+           typeKey.equalsIgnoreCase("spray") ||
+           typeKey.equalsIgnoreCase("start_spray")) {
+    int duration = doc["duration"] | (doc["durationSeconds"] | 10);
+    const char* mode = doc["mode"] | "Manual";
     startSpray(duration, mode);
+    sendAck("spray", "ok");
   }
-  else if (strcmp(typeKey, "STOP") == 0 || strcmp(typeKey, "stop") == 0) {
+  else if (typeKey.equalsIgnoreCase("STOP") ||
+           typeKey.equalsIgnoreCase("stop") ||
+           typeKey.equalsIgnoreCase("stop_spray")) {
     stopSpray();
+    sendAck("stop", "ok");
   }
-  else if (strcmp(typeKey, "set_schedules")   == 0 ||
-           strcmp(typeKey, "sync_schedule")    == 0 ||
-           strcmp(typeKey, "sync_schedules")   == 0 ||
-           strcmp(typeKey, "SCHEDULE")         == 0) {
+  else if (typeKey.equalsIgnoreCase("set_schedules") ||
+           typeKey.equalsIgnoreCase("sync_schedule") ||
+           typeKey.equalsIgnoreCase("sync_schedules") ||
+           typeKey.equalsIgnoreCase("SCHEDULE")) {
     if (doc.containsKey("schedules")) {
       JsonArray arr   = doc["schedules"].as<JsonArray>();
       scheduleCount   = 0;
@@ -719,12 +727,12 @@ void processCommandJson(const String& jsonStr) {
         scheduleCount++;
       }
       saveSchedulesToNvs();
-      sendAck("sync_schedules", "ok");
+      sendAck("set_schedules", "ok");
       sendSchedules();
     }
   }
-  else if (strcmp(typeKey, "set_calibration") == 0 ||
-           strcmp(typeKey, "set_flow_rate")    == 0) {
+  else if (typeKey.equalsIgnoreCase("set_calibration") ||
+           typeKey.equalsIgnoreCase("set_flow_rate")) {
     if (doc.containsKey("flowRate")) {
       flowRateMlPerSec = doc["flowRate"].as<float>();
       if (flowRateMlPerSec <= 0.1) flowRateMlPerSec = 15.0;
@@ -733,9 +741,9 @@ void processCommandJson(const String& jsonStr) {
       sendSummary();
     }
   }
-  // ★ BARU: handler CONFIG — terima SSID/PW dari App, simpan ke NVS, konek WiFi
-  else if (strcmp(typeKey, "CONFIG") == 0 ||
-           strcmp(typeKey, "set_wifi")  == 0) {
+  // Handler CONFIG — terima SSID/PW dari App, simpan ke NVS, konek WiFi
+  else if (typeKey.equalsIgnoreCase("CONFIG") ||
+           typeKey.equalsIgnoreCase("set_wifi")) {
     if (doc.containsKey("ssid")) {
       wifiSsid     = doc["ssid"].as<String>();
       wifiPassword = doc["password"].as<String>();
@@ -750,14 +758,11 @@ void processCommandJson(const String& jsonStr) {
       saveWifiConfigToNvs();
       sendAck("set_wifi", "ok");
       Serial.printf("CONFIG diterima. SSID=%s, akan konek WiFi...\n", wifiSsid.c_str());
-      // Mulai konek WiFi secara non-blocking
       connectWifi();
-      // Lanjut konek MQTT akan otomatis di-handle oleh maintainMqtt() di dalam loop()
-      // begitu status WiFi.status() == WL_CONNECTED
     }
   }
-  // ★ BARU: handler toggle_led — nyalakan/matikan lampu LED secara manual
-  else if (strcmp(typeKey, "toggle_led") == 0) {
+  // Handler toggle_led — nyalakan/matikan lampu LED secara manual
+  else if (typeKey.equalsIgnoreCase("toggle_led")) {
     if (doc.containsKey("state")) {
       forceLedOn = doc["state"].as<bool>();
       sendAck("toggle_led", "ok");
@@ -765,7 +770,7 @@ void processCommandJson(const String& jsonStr) {
     }
   }
   else {
-    Serial.printf("[CMD] Unknown command: %s\n", typeKey);
+    Serial.printf("[CMD] Unknown command: %s\n", typeKey.c_str());
   }
 }
 
@@ -776,7 +781,6 @@ class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
     deviceConnected = true;
     Serial.println("App Client Connected via BLE!");
-    // Kirim summary langsung saat HP konek (sync jam dilakukan app)
   }
   void onDisconnect(BLEServer* pServer) {
     deviceConnected = false;
@@ -793,6 +797,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       for (size_t i = 0; i < rxValue.length(); i++) {
         char c = rxValue[i];
         if (c == '\n') {
+          rxBuffer.trim();
           if (rxBuffer.length() > 0) {
             Serial.print("BLE Received: ");
             Serial.println(rxBuffer);
@@ -802,6 +807,25 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         } else {
           rxBuffer += c;
         }
+      }
+      // Fallback: Jika JSON lengkap tanpa newline (kompatibel klien lama)
+      if (rxBuffer.startsWith("{") && rxBuffer.endsWith("}")) {
+        int openB = 0, closeB = 0;
+        for (size_t k = 0; k < rxBuffer.length(); k++) {
+          if (rxBuffer[k] == '{') openB++;
+          else if (rxBuffer[k] == '}') closeB++;
+        }
+        if (openB > 0 && openB == closeB) {
+          Serial.print("BLE Received (Auto-Framed): ");
+          Serial.println(rxBuffer);
+          processCommandJson(rxBuffer);
+          rxBuffer = "";
+        }
+      }
+      // Safety guard: jika buffer kepenuhan tanpa newline (mis. paket corrupt)
+      if (rxBuffer.length() > 2048) {
+        Serial.println("rxBuffer overflow, resetting buffer.");
+        rxBuffer = "";
       }
     }
   }
@@ -833,6 +857,7 @@ void setup() {
 
   // Setup BLE
   BLEDevice::init("ESP32_Sprayer");
+  BLEDevice::setMTU(517);
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 

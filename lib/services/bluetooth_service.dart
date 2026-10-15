@@ -454,34 +454,61 @@ class BluetoothService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void>? _writeQueue;
+
   Future<void> _writeRaw(String jsonStr) async {
     if (_rxCharacteristic == null) return;
     if (!_isConnected) {
       if (kDebugMode) print('Skip BLE write (tidak terhubung): $jsonStr');
       return;
     }
+
+    // Antrikan transmisi data secara serial agar tidak tumpang-tindih (interleaving)
+    final prevQueue = _writeQueue;
+    final completer = Completer<void>();
+    _writeQueue = completer.future;
+
+    if (prevQueue != null) {
+      try {
+        await prevQueue;
+      } catch (_) {}
+    }
+
     try {
+      if (!_isConnected || _rxCharacteristic == null) return;
       final bytes = utf8.encode(jsonStr);
-      const chunkSize = 128;
-      for (int i = 0; i < bytes.length; i += chunkSize) {
-        final end = (i + chunkSize < bytes.length) ? i + chunkSize : bytes.length;
+
+      // Ukuran chunk aman untuk BLE ATT MTU:
+      // Standar BLE ATT MTU default adalah 23 byte (maks 20 byte data per write-no-response).
+      // Menulis > 20 byte tanpa negosiasi MTU menyebabkan paket dipotong/dibuang oleh stack BLE Android.
+      // Bila MTU dinegosiasikan lebih besar, gunakan hingga (mtuNow - 3).
+      int maxChunk = 20;
+      if (_connectedDevice != null && _connectedDevice!.mtuNow > 23) {
+        maxChunk = (_connectedDevice!.mtuNow - 3).clamp(20, 128);
+      }
+
+      for (int i = 0; i < bytes.length; i += maxChunk) {
+        if (!_isConnected || _rxCharacteristic == null) break;
+        final end = (i + maxChunk < bytes.length) ? i + maxChunk : bytes.length;
         final chunk = bytes.sublist(i, end);
         await _rxCharacteristic!.write(
           chunk,
           withoutResponse: _rxCharacteristic!.properties.writeWithoutResponse,
         );
         if (end < bytes.length) {
-          await Future.delayed(const Duration(milliseconds: 15));
+          await Future.delayed(const Duration(milliseconds: 20));
         }
       }
-      if (kDebugMode) print('Sent BLE bytes: $jsonStr');
+      if (kDebugMode) print('Sent BLE bytes (${bytes.length} B, chunk $maxChunk): $jsonStr');
     } catch (e) {
       if (kDebugMode) print('Error writing BLE characteristic: $e');
+    } finally {
+      completer.complete();
     }
   }
 
   void _sendBleMessage(Map<String, dynamic> payload) {
-    _writeRaw(jsonEncode(payload));
+    _writeRaw('${jsonEncode(payload)}\n');
   }
 
   /// Kirim envelope kontrak perangkat baru (diakhiri `\n` sesuai framing BLE).
@@ -573,6 +600,7 @@ class BluetoothService extends ChangeNotifier {
     _txCharacteristic = null;
     _activeDeviceKey = null;
     _incomingBuffer.clear();
+    _writeQueue = null;
     _isConnected = false;
     _isConnecting = false;
     _connectedDeviceName = customMessage;
