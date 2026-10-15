@@ -26,9 +26,26 @@ class NotificationService extends ChangeNotifier {
 
   bool _initialized = false;
   bool _permissionGranted = false;
+  bool _scheduleNotifEnabled = true;
+  bool _deviceOfflineAlertEnabled = true;
 
   bool get isInitialized => _initialized;
   bool get permissionGranted => _permissionGranted;
+  bool get scheduleNotifEnabled => _scheduleNotifEnabled;
+  bool get deviceOfflineAlertEnabled => _deviceOfflineAlertEnabled;
+
+  set scheduleNotifEnabled(bool val) {
+    _scheduleNotifEnabled = val;
+    if (!val) {
+      cancelAll();
+    }
+    notifyListeners();
+  }
+
+  set deviceOfflineAlertEnabled(bool val) {
+    _deviceOfflineAlertEnabled = val;
+    notifyListeners();
+  }
 
   /// Inisialisasi plugin sekali saat app launch.
   Future<void> initialize() async {
@@ -245,7 +262,7 @@ class NotificationService extends ChangeNotifier {
       if (isActive) {
         await scheduleDaily(
           id: id,
-          title: '💦 Jadwal Semprot Otomatis',
+          title: 'Jadwal Semprot Otomatis',
           body:
               'Waktunya semprot! Jadwal ${_pad(hour)}:${_pad(minute)} akan berjalan ${duration}s.',
           hour: hour,
@@ -269,25 +286,28 @@ class NotificationService extends ChangeNotifier {
     required double volumeMl,
   }) => showInstant(
         id: 2001,
-        title: '✅ Semprot Selesai',
+        title: 'Semprot Selesai',
         body:
             'Durasi: ${durationSec}s • Volume: ${volumeMl.toStringAsFixed(0)} ml',
         payload: 'spray_done',
       );
 
   /// Notifikasi: Perangkat offline
-  Future<void> notifyDeviceOffline(String deviceName) => showInstant(
-        id: 2002,
-        title: '⚠️ Perangkat Tidak Terhubung',
-        body: '$deviceName tidak merespons. Periksa koneksi.',
-        isAlert: true,
-        payload: 'device_offline',
-      );
+  Future<void> notifyDeviceOffline(String deviceName) async {
+    if (!_deviceOfflineAlertEnabled) return;
+    await showInstant(
+      id: 2002,
+      title: 'Perangkat Tidak Terhubung',
+      body: '$deviceName tidak merespons. Periksa koneksi.',
+      isAlert: true,
+      payload: 'device_offline',
+    );
+  }
 
   /// Notifikasi: WiFi berhasil dikonfigurasi ke ESP32
   Future<void> notifyWifiConfigSent(String ssid) => showInstant(
         id: 2003,
-        title: '📡 Konfigurasi WiFi Terkirim',
+        title: 'Konfigurasi WiFi Terkirim',
         body: 'SSID "$ssid" berhasil dikirim ke ESP32 via BLE.',
         payload: 'wifi_config',
       );

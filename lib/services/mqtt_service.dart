@@ -333,10 +333,18 @@ class MqttService extends ChangeNotifier {
 
   /// Tulis daftar jadwal penuh ke ESP (tambah/hapus/nyalakan/matikan).
   void pushSchedules(List<SpraySchedule> schedules) {
+    int nextId = 1;
     _publishRequest({
       'v': 1,
       't': 'set_schedules',
-      'schedules': schedules.map((s) => s.toDeviceJson()).toList(),
+      'schedules': schedules.map((s) {
+        final json = s.toDeviceJson();
+        if (json['id'] == null) {
+          json['id'] = nextId;
+        }
+        nextId++;
+        return json;
+      }).toList(),
     });
   }
 

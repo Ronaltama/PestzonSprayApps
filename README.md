@@ -187,7 +187,10 @@ Install library berikut via Library Manager:
 - `ArduinoJson` (v6 / v7)
 - `PubSubClient` (by Nick O'Leary)
 
-Pilih board **ESP32 Dev Module**, lalu klik **Upload**.
+Pilih board **ESP32 Dev Module**, lalu atur setting berikut:
+- **Partition Scheme:** `Huge APP (3MB No OTA/1MB SPIFFS)` *(Wajib dipilih karena firmware menggunakan BLE + WiFi + MQTT)*
+
+Lalu klik **Upload**.
 
 ### 4. Build & Install APK
 ```bash

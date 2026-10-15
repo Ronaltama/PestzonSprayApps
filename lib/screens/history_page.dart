@@ -220,9 +220,16 @@ class _HistoryPageState extends State<HistoryPage> {
                                         color: log.status == 'Success' ? (isDark ? primaryAccent : AppTheme.successColor) : AppTheme.errorColor,
                                       ),
                                     ),
-                                    Text(
-                                      '🔋 ${log.batteryPercentage}%',
-                                      style: TextStyle(fontFamily: 'Utendo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.battery_std, size: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          '${log.batteryPercentage}%',
+                                          style: TextStyle(fontFamily: 'Utendo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),

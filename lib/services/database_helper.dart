@@ -176,25 +176,9 @@ class DatabaseHelper extends ChangeNotifier {
     }
   }
 
-  /// Seed jadwal bawaan hanya dipasang saat membuat database baru (tidak
-  /// diulang saat upgrade). Dipanggil dari [_createSchemaV2].
+  /// Seed jadwal bawaan: dimulai dalam keadaan bersih (tanpa jadwal dummy).
   Future<void> _seedDefaultSchedules(Database db) async {
-    final existing = await db.query('spray_schedules', limit: 1);
-    if (existing.isNotEmpty) return;
-    await db.insert('spray_schedules', {
-      'title': 'Semprot Pagi',
-      'hour': 7,
-      'minute': 0,
-      'durationSeconds': 30,
-      'isActive': 1,
-    });
-    await db.insert('spray_schedules', {
-      'title': 'Semprot Sore',
-      'hour': 16,
-      'minute': 0,
-      'durationSeconds': 30,
-      'isActive': 1,
-    });
+    // Dimulai kosong agar tidak membingungkan pengguna dengan jadwal dummy bawaan.
   }
 
   // --- SPRAY LOGS CRUD ---
@@ -244,9 +228,16 @@ class DatabaseHelper extends ChangeNotifier {
   }
 
   // --- SPRAY SCHEDULES CRUD ---
-  Future<int> insertSchedule(SpraySchedule schedule) async {
+  Future<int> insertSchedule(SpraySchedule schedule, {String? deviceKey}) async {
     final db = await instance.database;
-    final id = await db.insert('spray_schedules', schedule.toMap());
+    final row = schedule.toMap();
+    if (deviceKey != null) {
+      row['device_key'] = deviceKey;
+    }
+    if (row['id'] == null) {
+      row.remove('id');
+    }
+    final id = await db.insert('spray_schedules', row);
     notifyListeners();
     return id;
   }
@@ -302,7 +293,7 @@ class DatabaseHelper extends ChangeNotifier {
     final db = await instance.database;
     final maps = await db.query(
       'spray_schedules',
-      where: 'LOWER(device_key) = ? OR device_key = ?',
+      where: 'LOWER(device_key) = ? OR device_key = ? OR device_key IS NULL',
       whereArgs: [deviceKey.toLowerCase(), 'default'],
       orderBy: 'hour ASC, minute ASC',
     );
@@ -314,14 +305,26 @@ class DatabaseHelper extends ChangeNotifier {
   Future<void> replaceSchedulesForDevice(
       String deviceKey, List<SpraySchedule> schedules) async {
     final db = await instance.database;
+    // Pertahankan judul jadwal lokal jika respon dari alat memakai judul bawaan
+    final existingList = await getSchedulesForDevice(deviceKey);
+    final titleMap = <String, String>{};
+    for (final e in existingList) {
+      titleMap['${e.hour}:${e.minute}'] = e.title;
+    }
+
     await db.transaction((txn) async {
       await txn.delete('spray_schedules',
-          where: 'device_key = ?', whereArgs: [deviceKey]);
+          where: 'LOWER(device_key) = ? OR device_key = ? OR device_key IS NULL',
+          whereArgs: [deviceKey.toLowerCase(), 'default']);
       for (final s in schedules) {
         final row = s.toMap();
         row['device_key'] = deviceKey;
         if (s.id == null) {
           row.remove('id');
+        }
+        final key = '${s.hour}:${s.minute}';
+        if ((s.title == 'Penyemprotan' || s.title.isEmpty) && titleMap.containsKey(key)) {
+          row['title'] = titleMap[key];
         }
         await txn.insert('spray_schedules', row);
       }

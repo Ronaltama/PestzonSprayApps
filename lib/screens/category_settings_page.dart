@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/mqtt_service.dart';
 import '../services/bluetooth_service.dart';
 import '../services/database_helper.dart';
+import '../services/notification_service.dart';
 import '../services/theme_provider.dart';
 import '../theme/theme.dart';
 import '../utils/app_notification.dart';
@@ -25,21 +26,12 @@ class CategorySettingsPage extends StatefulWidget {
 }
 
 class _CategorySettingsPageState extends State<CategorySettingsPage> {
-  // Local states
-  bool _autoConnect = true;
-  bool _lowTankWarning = true;
-  bool _scheduleNotification = true;
-  bool _alertSound = true;
-  bool _deviceOfflineAlert = true;
-
   final TextEditingController _deviceIdController = TextEditingController(text: 'SPRAYER-001');
-  final TextEditingController _mqttHostController = TextEditingController(text: 'broker.emqx.io');
   int _defaultDuration = 30;
 
   @override
   void dispose() {
     _deviceIdController.dispose();
-    _mqttHostController.dispose();
     super.dispose();
   }
 
@@ -178,40 +170,6 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
               });
             },
           ),
-          Divider(height: 1, indent: 56, color: Colors.grey.shade800),
-          ListTile(
-            leading: buildIconBox(Icons.dns_outlined),
-            title: const Text(
-              'Host Server MQTT Broker',
-              style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
-            ),
-            subtitle: Text(
-              _mqttHostController.text,
-              style: TextStyle(fontFamily: 'Utendo', color: subtitleColor),
-            ),
-            trailing: Icon(Icons.edit_outlined, size: 20, color: Colors.grey.shade400),
-            onTap: () {
-              _showEditDialog('Host MQTT Broker', _mqttHostController, (val) {
-                setState(() {});
-              });
-            },
-          ),
-          Divider(height: 1, indent: 56, color: Colors.grey.shade800),
-          SwitchListTile(
-            value: _autoConnect,
-            onChanged: (val) => setState(() => _autoConnect = val),
-            activeTrackColor: ThemeProvider.greenAccentColor,
-            activeThumbColor: ThemeProvider.blackColor,
-            title: const Text(
-              'Auto-Connect Perangkat',
-              style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
-            ),
-            subtitle: Text(
-              'Otomatis hubungkan ke ESP32 saat aplikasi terbuka',
-              style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: subtitleColor),
-            ),
-            secondary: buildIconBox(Icons.sync),
-          ),
         ]);
 
       case 'semprot':
@@ -237,35 +195,24 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
               style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
             ),
             subtitle: Text(
-              'Hitung & suntik debit semprotan (ml/s) ke ESP32',
+              'Kalibrasi debit pompa (ml/detik)',
               style: TextStyle(fontFamily: 'Utendo', color: subtitleColor),
             ),
             trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
             onTap: () => _showCalibrationDialog(context),
           ),
-          Divider(height: 1, indent: 56, color: Colors.grey.shade800),
-          SwitchListTile(
-            value: _lowTankWarning,
-            onChanged: (val) => setState(() => _lowTankWarning = val),
-            activeTrackColor: ThemeProvider.greenAccentColor,
-            activeThumbColor: ThemeProvider.blackColor,
-            title: const Text(
-              'Peringatan Cairan Rendah',
-              style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
-            ),
-            subtitle: Text(
-              'Notifikasi jika tangki tersisa kurang dari 15%',
-              style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: subtitleColor),
-            ),
-            secondary: buildIconBox(Icons.warning_amber_rounded),
-          ),
         ]);
 
       case 'notifikasi':
+        final notifService = Provider.of<NotificationService>(context);
         return _buildCardContainer([
           SwitchListTile(
-            value: _scheduleNotification,
-            onChanged: (val) => setState(() => _scheduleNotification = val),
+            value: notifService.scheduleNotifEnabled,
+            onChanged: (val) {
+              setState(() {
+                notifService.scheduleNotifEnabled = val;
+              });
+            },
             activeTrackColor: ThemeProvider.greenAccentColor,
             activeThumbColor: ThemeProvider.blackColor,
             title: const Text(
@@ -280,24 +227,12 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
           ),
           Divider(height: 1, indent: 56, color: Colors.grey.shade800),
           SwitchListTile(
-            value: _alertSound,
-            onChanged: (val) => setState(() => _alertSound = val),
-            activeTrackColor: ThemeProvider.greenAccentColor,
-            activeThumbColor: ThemeProvider.blackColor,
-            title: const Text(
-              'Suara & Efek Peringatan',
-              style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
-            ),
-            subtitle: Text(
-              'Mainkan suara saat terjadi kegagalan atau status tangki',
-              style: TextStyle(fontFamily: 'Utendo', fontSize: 12, color: subtitleColor),
-            ),
-            secondary: buildIconBox(Icons.volume_up_outlined),
-          ),
-          Divider(height: 1, indent: 56, color: Colors.grey.shade800),
-          SwitchListTile(
-            value: _deviceOfflineAlert,
-            onChanged: (val) => setState(() => _deviceOfflineAlert = val),
+            value: notifService.deviceOfflineAlertEnabled,
+            onChanged: (val) {
+              setState(() {
+                notifService.deviceOfflineAlertEnabled = val;
+              });
+            },
             activeTrackColor: ThemeProvider.greenAccentColor,
             activeThumbColor: ThemeProvider.blackColor,
             title: const Text(
@@ -314,38 +249,6 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
 
       case 'storage':
         return _buildCardContainer([
-          ListTile(
-            leading: buildIconBox(Icons.download_rounded),
-            title: const Text(
-              'Ekspor Data Riwayat',
-              style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
-            ),
-            subtitle: Text(
-              'Simpan riwayat semprot dalam format CSV/Excel',
-              style: TextStyle(fontFamily: 'Utendo', color: subtitleColor),
-            ),
-            trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
-            onTap: () {
-              AppNotification.show(context, 'Data riwayat semprot berhasil diekspor!');
-            },
-          ),
-          Divider(height: 1, indent: 56, color: Colors.grey.shade800),
-          ListTile(
-            leading: buildIconBox(Icons.cleaning_services_outlined),
-            title: const Text(
-              'Bersihkan Cache Aplikasi',
-              style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor),
-            ),
-            subtitle: Text(
-              'Hapus data sementara untuk membebaskan ruang',
-              style: TextStyle(fontFamily: 'Utendo', color: subtitleColor),
-            ),
-            trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
-            onTap: () {
-              AppNotification.show(context, 'Cache aplikasi berhasil dibersihkan!');
-            },
-          ),
-          Divider(height: 1, indent: 56, color: Colors.grey.shade800),
           ListTile(
             leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
             title: Text(
@@ -570,7 +473,7 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
   void _showAboutDialog(BuildContext context) {
     showAboutDialog(
       context: context,
-      applicationName: 'Pestzon Spray AI & IoT',
+      applicationName: 'Pestzon Spray',
       applicationVersion: '1.0.1',
       applicationIcon: Container(
         padding: const EdgeInsets.all(8),
@@ -583,7 +486,7 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
       children: [
         const SizedBox(height: 12),
         const Text(
-          'Aplikasi kontrol dan pemantauan penyemprotan tanaman cerdas berbasis AI dan IoT ESP32.\n\nFitur Utama:\n- Dosis otomatis sistem pakar AI\n- Pemantauan tangki & baterai real-time\n- Kontrol dual-mode BLE & MQTT Cloud\n- Penjadwalan & Riwayat Semprot',
+          'Aplikasi kontrol dan pemantauan penyemprotan tanaman cerdas berbasis IoT ESP32.\n\nFitur Utama:\n- Pemantauan daya baterai & panel surya\n- Kontrol dual-mode BLE & MQTT Cloud\n- Penjadwalan & Riwayat Semprot Presisi\n- Kalibrasi Debit Pompa',
           style: TextStyle(fontFamily: 'Utendo', fontSize: 13),
         ),
       ],
@@ -621,7 +524,7 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
               }
               AppNotification.show(
                 context,
-                'Menyuntikkan kalibrasi ${rate.toStringAsFixed(1)} ml/detik ke ESP32...',
+                'Menyimpan kalibrasi debit ${rate.toStringAsFixed(1)} ml/detik ke alat...',
               );
               Navigator.pop(dialogContext);
             }
@@ -924,7 +827,7 @@ class _CategorySettingsPageState extends State<CategorySettingsPage> {
                     countdownTimer?.cancel();
                     sendCalibration(rate);
                   },
-                  child: const Text('Simpan & Suntik ESP32', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold)),
+                  child: const Text('Simpan ke Alat', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold)),
                 ),
               ],
             );

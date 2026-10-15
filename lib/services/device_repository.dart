@@ -23,7 +23,7 @@ class DeviceRepository extends ChangeNotifier {
   final BluetoothService _bt;
   final MqttService _mqtt;
 
-  static const Duration _requestTimeout = Duration(seconds: 4);
+  static const Duration _requestTimeout = Duration(seconds: 6);
 
   List<DailyVolumeStat>? _stats;
   List<SpraySchedule>? _schedules;
@@ -221,13 +221,13 @@ class DeviceRepository extends ChangeNotifier {
   /// Tunggu event pertama pada [events]; subscribe dilakukan lebih dulu agar
   /// response yang cepat tidak terlewat. Mengembalikan `true` jika ada event
   /// dalam batas waktu, `false` jika timeout.
-  Future<bool> _awaitEvent(Stream<dynamic> events) {
+  Future<bool> _awaitEvent(Stream<dynamic> events, [Duration? timeout]) {
     final completer = Completer<bool>();
     late final StreamSubscription<dynamic> sub;
     sub = events.listen((_) {
       if (!completer.isCompleted) completer.complete(true);
     });
-    final timer = Timer(_requestTimeout, () {
+    final timer = Timer(timeout ?? _requestTimeout, () {
       if (!completer.isCompleted) completer.complete(false);
     });
     return completer.future.then((value) {
@@ -310,7 +310,7 @@ class DeviceRepository extends ChangeNotifier {
   Future<List<SpraySchedule>?> pullSchedules() async {
     final channel = activeChannel;
     if (channel == DeviceChannel.none) return null;
-    final future = _awaitEvent(_schedulesEvents(channel));
+    final future = _awaitEvent(_schedulesEvents(channel), const Duration(seconds: 6));
     if (channel == DeviceChannel.ble) {
       _bt.requestSchedules();
     } else {
@@ -347,16 +347,56 @@ class DeviceRepository extends ChangeNotifier {
     _isPushing = true;
     _lastAck = null;
     notifyListeners();
+
+    final completer = Completer<DeviceAck?>();
+    StreamSubscription<dynamic>? ackSub;
+    StreamSubscription<dynamic>? schedSub;
+    Timer? timeoutTimer;
+
+    void cleanup() {
+      ackSub?.cancel();
+      schedSub?.cancel();
+      timeoutTimer?.cancel();
+    }
+
+    // Dengarkan event ACK dari ESP32
+    ackSub = _ackEvents(channel).listen((ack) {
+      if (!completer.isCompleted) {
+        final deviceAck = ack is DeviceAck
+            ? ack
+            : const DeviceAck(ref: 'set_schedules', ok: true);
+        completer.complete(deviceAck);
+      }
+    });
+
+    // ESP32 juga mengirim daftar schedules terbaru segera setelah ACK.
+    // Jika event schedules tiba lebih dulu atau paket ACK terlewat di BLE, anggap berhasil.
+    schedSub = _schedulesEvents(channel).listen((_) {
+      if (!completer.isCompleted) {
+        completer.complete(const DeviceAck(ref: 'set_schedules', ok: true));
+      }
+    });
+
+    // Batas waktu hingga 8 detik untuk menulis ke Flash NVS ESP32 & serialisasi BLE.
+    timeoutTimer = Timer(const Duration(seconds: 8), () {
+      if (!completer.isCompleted) {
+        completer.complete(null);
+      }
+    });
+
     try {
-      final future = _awaitEvent(_ackEvents(channel));
       if (channel == DeviceChannel.ble) {
         _bt.pushSchedules(schedules);
       } else {
         _mqtt.pushSchedules(schedules);
       }
-      final ok = await future;
-      return ok ? _lastAck : null;
+      final ack = await completer.future;
+      if (ack != null) {
+        _lastAck = ack;
+      }
+      return ack;
     } finally {
+      cleanup();
       _isPushing = false;
       notifyListeners();
     }

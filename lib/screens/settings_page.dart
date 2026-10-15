@@ -160,7 +160,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 isDark: isDark,
                 icon: Icons.sensors,
                 title: 'Koneksi & Perangkat',
-                subtitle: 'ID Perangkat (${_deviceIdController.text}), Server MQTT & Auto-Connect',
+                subtitle: 'ID Perangkat (${_deviceIdController.text}) & Status Sambungan',
                 onTap: () {
                   Navigator.push(
                     context,
@@ -177,21 +177,21 @@ class _SettingsPageState extends State<SettingsPage> {
 
               const SizedBox(height: 12),
 
-              // Category Card Button 2: Penyemprotan & AI
+              // Category Card Button 2: Pengaturan Semprot
               _buildCategoryCardButton(
                 context: context,
                 isDark: isDark,
-                icon: Icons.psychology,
-                title: 'Penyemprotan & AI',
-                subtitle: 'Kalibrasi Debit, Durasi Default & Dosis AI',
+                icon: Icons.water_drop,
+                title: 'Pengaturan Semprot',
+                subtitle: 'Kalibrasi Debit & Durasi Default',
                 onTap: () {
                   Navigator.push(
                     context,
                     _createSlideRoute(
                       const CategorySettingsPage(
                         categoryId: 'semprot',
-                        title: 'Penyemprotan & AI',
-                        icon: Icons.psychology,
+                        title: 'Pengaturan Semprot',
+                        icon: Icons.water_drop,
                       ),
                     ),
                   );
@@ -206,7 +206,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 isDark: isDark,
                 icon: Icons.notifications_none,
                 title: 'Notifikasi & Peringatan',
-                subtitle: 'Pengingat Jadwal, Suara & Alarm Perangkat Offline',
+                subtitle: 'Pengingat Jadwal & Alarm Perangkat Offline',
                 onTap: () {
                   Navigator.push(
                     context,
@@ -229,7 +229,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 isDark: isDark,
                 icon: Icons.storage_rounded,
                 title: 'Penyimpanan & Database',
-                subtitle: 'Ekspor Data CSV, Bersihkan Cache & Hapus Riwayat',
+                subtitle: 'Kosongkan Database & Hapus Riwayat Semprot',
                 onTap: () {
                   Navigator.push(
                     context,

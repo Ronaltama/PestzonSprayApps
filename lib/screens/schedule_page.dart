@@ -78,10 +78,15 @@ class _SchedulePageState extends State<SchedulePage> {
       return;
     }
 
-    // ESP kosong (mis. perangkat baru): dorong jadwal bawaan lokal sekali ke
-    // alat secara senyap (tanpa toast). Setelah itu daftar kosong dihormati.
+    final bt = context.read<BluetoothService>();
+    final activeKey = bt.activeDeviceKey;
+
+    // ESP kosong (mis. perangkat baru / restart NVS): dorong jadwal lokal ke alat
+    // agar data jadwal di HP tidak terhapus begitu saja!
     if (pulled.isEmpty) {
-      final local = await _db!.getAllSchedules();
+      final local = activeKey != null
+          ? await _db!.getSchedulesForDevice(activeKey)
+          : await _db!.getAllSchedules();
       if (!mounted) return;
       if (local.isNotEmpty) {
         await _repo!.pushSchedules(local);
@@ -89,12 +94,19 @@ class _SchedulePageState extends State<SchedulePage> {
       return;
     }
 
-    await _db!.replaceAllSchedules(pulled);
+    // Sinkronkan data jadwal dari alat ke database lokal
+    if (activeKey != null) {
+      await _db!.replaceSchedulesForDevice(activeKey, pulled);
+    } else {
+      await _db!.replaceAllSchedules(pulled);
+    }
+    if (mounted) setState(() {});
   }
 
   /// Kirim daftar jadwal lokal (DB) ke alat. Dipakai untuk kirim ulang manual
   /// dan setiap perubahan lokal (tambah/hapus/nyalakan/matikan).
   Future<void> _pushLocalToDevice(String successMessage) async {
+    if (mounted) setState(() {});
     if (!_repo!.isConnected) {
       _notify('Alat tidak terhubung. Perubahan tersimpan lokal saja.',
           isError: true);
@@ -111,17 +123,20 @@ class _SchedulePageState extends State<SchedulePage> {
       _notify(
           'Gagal: alat tidak merespons (timeout). Perubahan tersimpan lokal.',
           isError: true);
+      setState(() {});
       return;
     }
     if (!ack.ok) {
       _notify('Gagal disimpan di alat${ack.error != null ? ': ${ack.error}' : ''}.',
           isError: true);
+      setState(() {});
       return;
     }
     _notify(successMessage);
 
     // Sinkronkan notifikasi harian HP dengan jadwal terbaru
     _syncNotifications(schedules);
+    setState(() {});
   }
 
   /// Sinkronkan notifikasi lokal HP berdasarkan jadwal aktif.
@@ -137,7 +152,7 @@ class _SchedulePageState extends State<SchedulePage> {
                 'isActive': s.isActive,
               })
           .toList(),
-      scheduleNotifEnabled: true,
+      scheduleNotifEnabled: notifService.scheduleNotifEnabled,
     );
   }
 
@@ -251,7 +266,9 @@ class _SchedulePageState extends State<SchedulePage> {
 
               // Schedules List
               FutureBuilder<List<SpraySchedule>>(
-                future: dbHelper.getAllSchedules(),
+                future: (btService.activeDeviceKey != null)
+                    ? dbHelper.getSchedulesForDevice(btService.activeDeviceKey!)
+                    : dbHelper.getAllSchedules(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Center(child: CircularProgressIndicator(color: primaryAccent));
@@ -358,6 +375,7 @@ class _SchedulePageState extends State<SchedulePage> {
                               onChanged: (val) async {
                                 final updated = sched.copyWith(isActive: val);
                                 await dbHelper.updateSchedule(updated);
+                                if (mounted) setState(() {});
                                 await _pushLocalToDevice(
                                   val
                                       ? 'Jadwal "${sched.title}" diaktifkan & disimpan di alat'
@@ -370,6 +388,7 @@ class _SchedulePageState extends State<SchedulePage> {
                               onPressed: () async {
                                 if (sched.id != null) {
                                   await dbHelper.deleteSchedule(sched.id!);
+                                  if (mounted) setState(() {});
                                   await _pushLocalToDevice('Jadwal "${sched.title}" dihapus dari alat');
                                 }
                               },
@@ -475,14 +494,12 @@ class _SchedulePageState extends State<SchedulePage> {
                       durationSeconds: durationSeconds.toInt(),
                       isActive: true,
                     );
-                    final row = newSched.toMap();
-                    row['device_key'] = activeKey;
-                    if (row['id'] == null) row.remove('id');
-                    await (await _db!.database).insert('spray_schedules', row);
+                    await _db!.insertSchedule(newSched, deviceKey: activeKey);
 
                     if (dialogContext.mounted) {
                       Navigator.pop(dialogContext);
                     }
+                    if (mounted) setState(() {});
                     await _pushLocalToDevice('Jadwal "$title" ditambahkan & disimpan di alat');
                   },
                   child: Text('Simpan', style: TextStyle(fontFamily: 'Utendo', color: isDark ? ThemeProvider.blackColor : Colors.white)),

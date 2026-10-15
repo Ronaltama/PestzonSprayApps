@@ -23,10 +23,13 @@
  *   4. Setelah WiFi konek, ESP32 otomatis konek ke MQTT broker
  *   5. Mulai sekarang bisa kontrol juga dari cloud (MQTT)!
  *
- * DEPENDENCIES ARDUINO IDE:
+ * DEPENDENCIES & SETTING ARDUINO IDE:
  *   1. ESP32 Board Package (by Espressif Systems) — via Board Manager
  *   2. ArduinoJson Library (v6 atau v7)           — via Library Manager
  *   3. PubSubClient Library (by Nick O'Leary)     — via Library Manager
+ *   4. Tools -> Board: "ESP32 Dev Module"
+ *   5. Tools -> Partition Scheme: "Huge APP (3MB No OTA/1MB SPIFFS)"
+ *      (Wajib agar muat karena BLE + WiFi membutuhkan flash > 1.3MB)
  * ======================================================================================
  */
 
@@ -651,7 +654,7 @@ void stopSpray() {
 // INCOMING COMMAND PARSER (BLE & MQTT unified handler)
 // --------------------------------------------------------------------------------------
 void processCommandJson(const String& jsonStr) {
-  StaticJsonDocument<800> doc;
+  StaticJsonDocument<1536> doc;
   DeserializationError err = deserializeJson(doc, jsonStr);
   if (err) {
     Serial.print("JSON Error: ");
@@ -700,7 +703,8 @@ void processCommandJson(const String& jsonStr) {
   }
   else if (strcmp(typeKey, "set_schedules")   == 0 ||
            strcmp(typeKey, "sync_schedule")    == 0 ||
-           strcmp(typeKey, "sync_schedules")   == 0) {
+           strcmp(typeKey, "sync_schedules")   == 0 ||
+           strcmp(typeKey, "SCHEDULE")         == 0) {
     if (doc.containsKey("schedules")) {
       JsonArray arr   = doc["schedules"].as<JsonArray>();
       scheduleCount   = 0;
@@ -798,13 +802,6 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         } else {
           rxBuffer += c;
         }
-      }
-      // Fallback: Jika JSON langsung tanpa newline (beberapa klien BLE)
-      if (rxBuffer.startsWith("{") && rxBuffer.endsWith("}")) {
-        Serial.print("BLE Received (No Newline): ");
-        Serial.println(rxBuffer);
-        processCommandJson(rxBuffer);
-        rxBuffer = "";
       }
     }
   }

@@ -12,9 +12,11 @@ import '../services/theme_provider.dart';
 import '../theme/theme.dart';
 import '../models/esp_device.dart';
 import '../models/spray_log.dart';
+import '../models/device_status.dart';
 import '../widgets/device_card.dart';
 import '../utils/app_notification.dart';
 import '../utils/app_format.dart';
+import 'bluetooth_page.dart';
 import 'day_detail_overview_page.dart';
 import 'device_detail_screen.dart';
 import 'weekly_detail_overview_page.dart';
@@ -29,7 +31,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   double _selectedDuration = 30.0;
   int _selectedBarIndex = DateTime.now().weekday - 1;
-  bool _batchBusy = false;
+  String? _selectedDeviceKey;
 
   @override
   Widget build(BuildContext context) {
@@ -45,27 +47,47 @@ class _DashboardPageState extends State<DashboardPage> {
     final isBleConnected = btService.isConnected;
     final isMqttConnected = mqttService.isConnected && mqttService.isEspOnline;
     final isDark = themeProvider.isDarkMode;
-    final status = deviceRepo.summary;
-    final hasDevices = devices.isNotEmpty;
 
-    // Bila tak ada device tersimpan → tampilan lama satu-perangkat penuh
-    final List<Widget> legacySections = [
-      _buildHeroDayCard(context, status, isDark),
-      const SizedBox(height: AppTheme.spacingLG),
-      _buildStatisticChartCard(
-        context,
-        dbHelper,
-        status,
-        deviceRepo,
-        isDark,
-      ),
-      const SizedBox(height: AppTheme.spacingLG),
-      _buildSolarBatteryCard(
-          context, status, isBleConnected, isMqttConnected, isDark),
-      const SizedBox(height: AppTheme.spacingLG),
-      _buildPumpControlCard(context, btService, mqttService, dbHelper, status,
-          isBleConnected, isMqttConnected, isDark),
-    ];
+    // Tentukan selected device
+    String? currentKey = _selectedDeviceKey;
+    if (currentKey == null || !devices.any((d) => d.deviceKey == currentKey)) {
+      if (btService.isConnected && btService.activeDeviceKey != null) {
+        currentKey = btService.activeDeviceKey;
+      } else if (devices.isNotEmpty) {
+        currentKey = devices.first.deviceKey;
+      } else {
+        currentKey = null;
+      }
+    }
+
+    final selectedDevice =
+        currentKey != null ? registry.byKey(currentKey) : null;
+
+    // Cek koneksi untuk device yang dipilih
+    final bool isSelectedDeviceBle = selectedDevice != null
+        ? (btService.isConnected &&
+            selectedDevice.deviceKey == btService.activeDeviceKey)
+        : btService.isConnected;
+
+    final bool isSelectedDeviceMqtt = selectedDevice != null
+        ? (isMqttConnected &&
+            (selectedDevice.deviceKey.contains(mqttService.deviceId) ||
+                mqttService.deviceId == selectedDevice.name))
+        : isMqttConnected;
+
+    // Status telemetri untuk device yang dipilih
+    DeviceStatus displayStatus;
+    if (isSelectedDeviceBle || isSelectedDeviceMqtt || selectedDevice == null) {
+      displayStatus = deviceRepo.summary;
+    } else {
+      final cached = deviceRepo.statusOf(selectedDevice.deviceKey);
+      displayStatus = cached ??
+          DeviceStatus(
+            batteryPercentage: selectedDevice.lastBattery ?? 85,
+            totalVolumeTodayMl: selectedDevice.lastVolumeMl ?? 0.0,
+            connectionState: 'Disconnected',
+          );
+    }
 
     return Scaffold(
       backgroundColor:
@@ -84,224 +106,41 @@ class _DashboardPageState extends State<DashboardPage> {
                   btService, mqttService, isDark),
               const SizedBox(height: AppTheme.spacingLG),
 
-              if (hasDevices)
-                ..._buildFleetBody(
-                    context, registry, devices, btService, dbHelper, isDark)
-              else
-                ...legacySections,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // --- M3: tampilan armada (daftar kartu per perangkat registry) ---
-  List<Widget> _buildFleetBody(
-    BuildContext context,
-    EspDeviceRegistry registry,
-    List<EspDevice> devices,
-    BluetoothService btService,
-    DatabaseHelper dbHelper,
-    bool isDark,
-  ) {
-    final titleColor = isDark ? Colors.white : AppTheme.textDark;
-    final sub = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
-    final accent =
-        isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
-    final liveCount =
-        devices.where((d) => d.deviceKey == btService.activeDeviceKey).length;
-    final result = <Widget>[
-      // Ringkasan armada
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Armada Perangkat',
-                  style: TextStyle(
-                      fontFamily: 'Utendo',
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: titleColor,
-                      letterSpacing: -0.5)),
-              Text('${devices.length} perangkat · $liveCount tersambung (Live)',
-                  style:
-                      TextStyle(fontFamily: 'Utendo', color: sub, fontSize: 12)),
-            ],
-          ),
-          Icon(Icons.sensors, color: accent, size: 24),
-        ],
-      ),
-      if (liveCount > 0) ...[const SizedBox(height: 12), _batchSemprotButton(context, devices), const SizedBox(height: 6)],
-      const SizedBox(height: 14),
-      if (devices.isEmpty)
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          decoration: BoxDecoration(
-            color: isDark ? ThemeProvider.darkCardColor : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            'Belum ada perangkat tersimpan. Gunakan tab Perangkat untuk memindai.',
-            style: TextStyle(fontFamily: 'Utendo', color: sub, fontSize: 13),
-          ),
-        )
-      else
-        ...devices.map((dev) => DeviceCard(
-              device: dev,
-              snapshotFuture: dbHelper.latestDeviceSnapshot(dev.deviceKey),
-              isLive: btService.isConnected &&
-                  dev.deviceKey == btService.activeDeviceKey,
-              onShowDetail: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          DeviceDetailScreen(deviceKey: dev.deviceKey),
-                    ),
-                  ),
-              onSprayNow: (btService.isConnected &&
-                      dev.deviceKey == btService.activeDeviceKey)
-                  ? () => _fleetSprayNow(context, btService, dbHelper, isDark)
-                  : null,
-            )),
-      const SizedBox(height: 6),
-    ];
-
-    return result;
-  }
-
-  Future<void> _fleetSprayNow(BuildContext context, BluetoothService btService,
-      DatabaseHelper dbHelper, bool isDark) async {
-    double dur = _selectedDuration;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (dialogCtx, setState) => AlertDialog(
-          title: const Text('Semprot Sekarang',
-              style: TextStyle(fontFamily: 'Utendo')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Durasi: ${dur.round()} detik',
-                  style: const TextStyle(fontFamily: 'Utendo')),
-              Slider(
-                min: 5,
-                max: 180,
-                divisions: 35,
-                value: dur.clamp(5, 180),
-                onChanged: (v) => setState(() => dur = v),
+              // DASHBOARD LENGKAP UTAMA (SELALU AKTIF & TAMPIL)
+              _buildHeroDayCard(context, displayStatus, isDark),
+              const SizedBox(height: AppTheme.spacingLG),
+              _buildStatisticChartCard(
+                context,
+                dbHelper,
+                displayStatus,
+                deviceRepo,
+                isDark,
+                currentKey,
+              ),
+              const SizedBox(height: AppTheme.spacingLG),
+              _buildSolarBatteryCard(
+                context,
+                displayStatus,
+                isSelectedDeviceBle,
+                isSelectedDeviceMqtt,
+                isDark,
+              ),
+              const SizedBox(height: AppTheme.spacingLG),
+              _buildPumpControlCard(
+                context,
+                btService,
+                mqttService,
+                dbHelper,
+                displayStatus,
+                isBleConnected,
+                isMqttConnected,
+                isDark,
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('Batal', style: TextStyle(fontFamily: 'Utendo')),
-            ),
-            FilledButton(
-              onPressed: dur <= 0
-                  ? null
-                  : () {
-                      Navigator.pop(dialogCtx);
-                      _selectedDuration = dur;
-                      btService.startSpraying(
-                        durationSeconds: dur.round(),
-                        dbHelper: dbHelper,
-                        mode: 'Manual',
-                      );
-                    },
-              child: const Text('Mulai', style: TextStyle(fontFamily: 'Utendo')),
-            ),
-          ],
         ),
       ),
     );
-  }
-
-  // --- tombol “Semprot yang Live” (M6 batch ringkas) ---
-  Widget _batchSemprotButton(BuildContext context, List<EspDevice> devices) {
-    return Row(children: [
-      Expanded(
-        child: OutlinedButton.icon(
-          onPressed:
-              _batchBusy ? null : () => _runBatchNow(context, devices),
-          icon: _batchBusy
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.water_drop, size: 16),
-          label: const Text('Semprot semua yang Live',
-              style: TextStyle(fontFamily: 'Utendo')),
-        ),
-      ),
-    ]);
-  }
-
-  Future<void> _runBatchNow(BuildContext context, List<EspDevice> devices) async {
-    final bt = context.read<BluetoothService>();
-    final liveKeys = devices
-        .where((d) => d.deviceKey == bt.activeDeviceKey)
-        .map((d) => d.deviceKey)
-        .toList();
-    if (liveKeys.isEmpty) return;
-
-    double dur = _selectedDuration.clamp(5, 180).toDouble();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Semprot Batch',
-              style: TextStyle(fontFamily: 'Utendo')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Durasi: ${dur.round()} detik',
-                  style: const TextStyle(fontFamily: 'Utendo')),
-              const SizedBox(height: 8),
-              Text('${liveKeys.length} perangkat Live akan disemprot.',
-                  style: const TextStyle(fontFamily: 'Utendo', fontSize: 12)),
-              Slider(
-                min: 5,
-                max: 180,
-                divisions: 35,
-                value: dur,
-                onChanged: (v) => setState(() => dur = v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Batal',
-                    style: TextStyle(fontFamily: 'Utendo'))),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Mulai',
-                    style: TextStyle(fontFamily: 'Utendo'))),
-          ],
-        ),
-      ),
-    );
-    if (confirmed != true) return;
-
-    final repo = context.read<DeviceRepository>();
-    setState(() => _batchBusy = true);
-    try {
-      final result =
-          await repo.sprayNowBatch(liveKeys, durationSeconds: dur.round());
-      if (mounted) {
-        AppNotification.show(
-          context,
-          'Semprot dimulai: ${result.started.length} unit · ${result.skipped.length} tak terjangkau.',
-          isError: result.started.isEmpty,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _batchBusy = false);
-    }
   }
 
   // --- HERO DAY SUMMARY CARD (With Top-Right Arrow & Auto-Slide Animation) ---
@@ -446,7 +285,7 @@ class _DashboardPageState extends State<DashboardPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Selamat Pagi! 🌱',
+                'Selamat Pagi',
                 style: TextStyle(
                   fontFamily: 'Utendo',
                   fontSize: 12,
@@ -455,7 +294,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
               Text(
-                'Pestzon Spray AI',
+                'Pestzon Spray',
                 style: TextStyle(
                   fontFamily: 'Utendo',
                   fontSize: 20,
@@ -660,15 +499,17 @@ class _DashboardPageState extends State<DashboardPage> {
     bool isDark,
   ) {
     if (!(isBle || isMqtt)) {
-      return _buildDataEmptyCard(
-        icon: Icons.battery_charging_full,
-        title: 'Sistem Daya Kebun',
-        subtitle: 'Baterai 18650 & Panel Surya',
-        isDark: isDark,
-      );
+      if (status == null || (status.batteryPercentage <= 0 && status.batteryVoltage <= 0)) {
+        return _buildDataEmptyCard(
+          icon: Icons.battery_charging_full,
+          title: 'Daya Alat',
+          subtitle: 'Baterai & Panel Surya',
+          isDark: isDark,
+        );
+      }
     }
     final battery = status.batteryPercentage;
-    final isSolar = status.isSolarCharging;
+    final isSolar = (isBle || isMqtt) ? status.isSolarCharging : false;
     final voltage = status.batteryVoltage;
     final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
@@ -706,11 +547,11 @@ class _DashboardPageState extends State<DashboardPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Sistem Daya Kebun',
+                        'Daya Alat',
                         style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
                       ),
                       Text(
-                        'Baterai 18650 & Panel Surya',
+                        'Baterai & Panel Surya',
                         style: TextStyle(fontFamily: 'Utendo', fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey),
                       ),
                     ],
@@ -720,17 +561,44 @@ class _DashboardPageState extends State<DashboardPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isDark ? primaryAccent : (isSolar ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7)),
+                  color: isDark
+                      ? primaryAccent
+                      : ((isBle || isMqtt)
+                          ? (isSolar ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7))
+                          : const Color(0xFFF3F4F6)),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  isSolar ? '⚡ Solar Charging' : '🔋 Battery Only',
-                  style: TextStyle(
-                    fontFamily: 'Utendo',
-                    color: isDark ? ThemeProvider.blackColor : (isSolar ? const Color(0xFFB45309) : const Color(0xFF15803D)),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      (isBle || isMqtt)
+                          ? (isSolar ? Icons.solar_power : Icons.battery_std)
+                          : Icons.inventory_2_outlined,
+                      size: 13,
+                      color: isDark
+                          ? ThemeProvider.blackColor
+                          : ((isBle || isMqtt)
+                              ? (isSolar ? const Color(0xFFB45309) : const Color(0xFF15803D))
+                              : Colors.grey.shade700),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      (isBle || isMqtt)
+                          ? (isSolar ? 'Pengisian Surya' : 'Daya Baterai')
+                          : 'Data Tersimpan',
+                      style: TextStyle(
+                        fontFamily: 'Utendo',
+                        color: isDark
+                            ? ThemeProvider.blackColor
+                            : ((isBle || isMqtt)
+                                ? (isSolar ? const Color(0xFFB45309) : const Color(0xFF15803D))
+                                : Colors.grey.shade700),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -788,19 +656,11 @@ class _DashboardPageState extends State<DashboardPage> {
     bool isMqtt,
     bool isDark,
   ) {
-    final isRunning = status.isPumpRunning;
+    final isRunning = (isBle || isMqtt) ? status.isPumpRunning : false;
     final cardBg = isDark ? ThemeProvider.darkCardColor : Colors.white;
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
     final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
-
-    if (!(isBle || isMqtt)) {
-      return _buildDataEmptyCard(
-        icon: Icons.water_drop,
-        title: 'Pompa Misting DC',
-        subtitle: 'Sistem Misting / Kabut',
-        isDark: isDark,
-      );
-    }
+    final double flowRate = (status.flowRateMlPerSec > 0 ? status.flowRateMlPerSec : 15.0).toDouble();
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -838,7 +698,11 @@ class _DashboardPageState extends State<DashboardPage> {
                         style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 16, color: titleColor),
                       ),
                       Text(
-                        isRunning ? 'Status: Menyemprot' : 'Status: Standby',
+                        isRunning
+                            ? 'Status: Menyemprot (${status.activeDurationSeconds}s)'
+                            : ((isBle || isMqtt)
+                                ? 'Status: Standby'
+                                : 'Status: Offline (Belum Tersambung)'),
                         style: TextStyle(
                           fontFamily: 'Utendo',
                           fontSize: 12,
@@ -856,7 +720,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '~5 ml/detik',
+                  '${flowRate.toStringAsFixed(1)} ml/detik',
                   style: TextStyle(fontFamily: 'Utendo', fontSize: 11, fontWeight: FontWeight.bold, color: isDark ? Colors.grey.shade300 : Colors.grey.shade700),
                 ),
               ),
@@ -871,7 +735,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 style: TextStyle(fontFamily: 'Utendo', fontSize: 13, color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
               ),
               Text(
-                '${_selectedDuration.toInt()} Detik (${(_selectedDuration * 5).toInt()} ml)',
+                '${_selectedDuration.toInt()} Detik (${(_selectedDuration * flowRate).toInt()} ml)',
                 style: TextStyle(
                   fontFamily: 'Utendo',
                   fontSize: 14,
@@ -893,7 +757,7 @@ class _DashboardPageState extends State<DashboardPage> {
               min: 5.0,
               max: 120.0,
               divisions: 23,
-              onChanged: (val) => setState(() => _selectedDuration = val),
+              onChanged: isRunning ? null : (val) => setState(() => _selectedDuration = val),
             ),
           ),
           const SizedBox(height: 4),
@@ -901,28 +765,134 @@ class _DashboardPageState extends State<DashboardPage> {
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: (isBle || isMqtt)
-                  ? () {
-                      if (isBle) {
-                        btService.startSpraying(
-                          durationSeconds: _selectedDuration.toInt(),
-                          dbHelper: dbHelper,
-                          mode: 'Manual App',
-                        );
-                      } else if (isMqtt) {
-                        mqttService.startSpraying(durationSeconds: _selectedDuration.toInt());
+              onPressed: !(isBle || isMqtt)
+                  ? null
+                  : () async {
+                      if (isRunning) {
+                        if (isBle) {
+                          btService.stopSpraying();
+                        } else if (isMqtt) {
+                          mqttService.stopSpraying();
+                        }
+                        if (context.mounted) {
+                          AppNotification.show(context, 'Penyemprotan dihentikan.');
+                        }
+                        return;
                       }
-                    }
-                  : null,
+
+                      final dur = _selectedDuration.toInt();
+                      final vol = (dur * flowRate).toInt();
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: isDark ? ThemeProvider.darkCardColor : Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          title: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: primaryAccent,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.water_drop, color: ThemeProvider.blackColor, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Mulai Semprot',
+                                style: TextStyle(
+                                  fontFamily: 'Utendo',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  color: titleColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Pompa misting akan menyemprotkan cairan selama $dur detik.',
+                                style: TextStyle(
+                                  fontFamily: 'Utendo',
+                                  fontSize: 13,
+                                  color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF2C2D30) : const Color(0xFFF3F4F6),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Durasi: $dur detik', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: titleColor)),
+                                    Text('Volume: ~$vol ml', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, color: primaryAccent)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Batal', style: TextStyle(fontFamily: 'Utendo')),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primaryAccent,
+                                foregroundColor: isDark ? ThemeProvider.blackColor : Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Mulai Semprot', style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirm == true) {
+                        if (isBle) {
+                          btService.startSpraying(
+                            durationSeconds: dur,
+                            dbHelper: dbHelper,
+                            mode: 'Manual App',
+                          );
+                        } else if (isMqtt) {
+                          mqttService.startSpraying(durationSeconds: dur);
+                        }
+                        if (context.mounted) {
+                          AppNotification.show(context, 'Penyemprotan dimulai ($dur detik)...');
+                        }
+                      }
+                    },
               style: ElevatedButton.styleFrom(
-                backgroundColor: primaryAccent,
-                foregroundColor: isDark ? ThemeProvider.blackColor : Colors.white,
+                backgroundColor: isRunning ? Colors.red.shade600 : primaryAccent,
+                foregroundColor: isRunning
+                    ? Colors.white
+                    : (isDark ? ThemeProvider.blackColor : Colors.white),
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               child: Text(
-                (isBle || isMqtt) ? 'SEMPROT SEKARANG' : 'SAMBUNGKAN KONEKSI DULU',
-                style: TextStyle(fontFamily: 'Utendo', fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? ThemeProvider.blackColor : Colors.white),
+                !(isBle || isMqtt)
+                    ? 'SAMBUNGKAN KONEKSI DULU'
+                    : (isRunning
+                        ? 'HENTIKAN PENYEMPROTAN (${status.activeDurationSeconds}s)'
+                        : 'SEMPROT SEKARANG'),
+                style: TextStyle(
+                  fontFamily: 'Utendo',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: isRunning
+                      ? Colors.white
+                      : (isDark ? ThemeProvider.blackColor : Colors.white),
+                ),
               ),
             ),
           ),
@@ -937,8 +907,9 @@ class _DashboardPageState extends State<DashboardPage> {
     DatabaseHelper dbHelper,
     dynamic status,
     DeviceRepository repo,
-    bool isDark,
-  ) {
+    bool isDark, [
+    String? selectedDeviceKey,
+  ]) {
     final titleColor = isDark ? Colors.white : AppTheme.textDark;
     final primaryAccent = isDark ? ThemeProvider.greenAccentColor : AppTheme.primaryColor;
 
@@ -948,9 +919,11 @@ class _DashboardPageState extends State<DashboardPage> {
     final todayIndex = DateTime.now().weekday - 1;
 
     return FutureBuilder<List<SprayLog>>(
-      future: dbHelper.getAllLogs(),
+      future: (selectedDeviceKey != null && selectedDeviceKey.isNotEmpty)
+          ? dbHelper.getLogsForDevice(selectedDeviceKey)
+          : dbHelper.getAllLogs(),
       builder: (context, snapshot) {
-        final logs = snapshot.data ?? [];
+        var logs = snapshot.data ?? [];
 
         // Daily volume data in ml computed from real logs for this week
         final List<double> volumes = List.filled(7, 0.0);

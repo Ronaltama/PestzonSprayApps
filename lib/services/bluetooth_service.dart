@@ -264,6 +264,13 @@ class BluetoothService extends ChangeNotifier {
         return;
       }
 
+      // Request MTU secara aman setelah karakteristik ditemukan
+      try {
+        await device.requestMtu(512);
+      } catch (e) {
+        if (kDebugMode) print('BLE: MTU request optional/skipped: $e');
+      }
+
       _isConnected = true;
       _isConnecting = false;
       // Isolasi sesi: bila berpindah ke perangkat lain (key berbeda dari
@@ -277,6 +284,8 @@ class BluetoothService extends ChangeNotifier {
         connectionState: 'Connected (BLE)',
       );
       notifyListeners();
+      // Auto sync time & summary from device
+      requestSummary();
       return;
     } catch (e) {
       if (kDebugMode) print('Failed to connect to BLE device: $e');
@@ -304,16 +313,24 @@ class BluetoothService extends ChangeNotifier {
     for (var s in services) {
       for (var c in s.characteristics) {
         final uuidStr = c.uuid.toString().toLowerCase();
-        if (uuidStr == rxCharUuid || c.properties.write || c.properties.writeWithoutResponse) {
+        if (uuidStr == rxCharUuid.toLowerCase() ||
+            uuidStr.contains('6e400002') ||
+            c.properties.write ||
+            c.properties.writeWithoutResponse) {
           _rxCharacteristic ??= c;
         }
-        if (uuidStr == txCharUuid || c.properties.notify || c.properties.indicate) {
+        if (uuidStr == txCharUuid.toLowerCase() ||
+            uuidStr.contains('6e400003') ||
+            c.properties.notify ||
+            c.properties.indicate) {
           _txCharacteristic ??= c;
         }
       }
     }
 
-    if (_txCharacteristic != null && _txCharacteristic!.properties.notify) {
+    if (_txCharacteristic != null &&
+        (_txCharacteristic!.properties.notify ||
+            _txCharacteristic!.properties.indicate)) {
       try {
         await _txCharacteristic!.setNotifyValue(true);
         _notifySubscription?.cancel();
@@ -446,10 +463,18 @@ class BluetoothService extends ChangeNotifier {
     }
     try {
       final bytes = utf8.encode(jsonStr);
-      await _rxCharacteristic!.write(
-        bytes,
-        withoutResponse: _rxCharacteristic!.properties.writeWithoutResponse,
-      );
+      const chunkSize = 128;
+      for (int i = 0; i < bytes.length; i += chunkSize) {
+        final end = (i + chunkSize < bytes.length) ? i + chunkSize : bytes.length;
+        final chunk = bytes.sublist(i, end);
+        await _rxCharacteristic!.write(
+          chunk,
+          withoutResponse: _rxCharacteristic!.properties.writeWithoutResponse,
+        );
+        if (end < bytes.length) {
+          await Future.delayed(const Duration(milliseconds: 15));
+        }
+      }
       if (kDebugMode) print('Sent BLE bytes: $jsonStr');
     } catch (e) {
       if (kDebugMode) print('Error writing BLE characteristic: $e');
@@ -517,10 +542,18 @@ class BluetoothService extends ChangeNotifier {
 
   /// Tulis daftar jadwal penuh ke ESP (tambah/hapus/nyalakan/matikan).
   void pushSchedules(List<SpraySchedule> schedules) {
+    int nextId = 1;
     _sendBleEnvelope({
       'v': 1,
       't': 'set_schedules',
-      'schedules': schedules.map((s) => s.toDeviceJson()).toList(),
+      'schedules': schedules.map((s) {
+        final json = s.toDeviceJson();
+        if (json['id'] == null) {
+          json['id'] = nextId;
+        }
+        nextId++;
+        return json;
+      }).toList(),
     });
   }
 
@@ -575,6 +608,8 @@ class BluetoothService extends ChangeNotifier {
 
     // Send START command via BLE to ESP32 with newline delimiter
     _sendBleEnvelope({
+      'v': 1,
+      't': 'spray',
       'cmd': 'START',
       'action': 'spray',
       'duration': durationSeconds,
@@ -605,10 +640,23 @@ class BluetoothService extends ChangeNotifier {
         _summaryStreamController.add(_deviceStatus); // push ke stream agar statusOf di DeviceRepository & UI Ringkasan terupdate langsung
         notifyListeners();
 
-        // LOGGING DISERAHKAN SEPENUHNYA KE ESP32.
-        // ESP32 akan mengirimkan payload {"t": "log"} saat durasi tercapai
-        // dengan volume yang sudah dihitung menggunakan flowRate yang terkalibrasi.
-        // Hal ini mencegah duplikasi dan menghindari penggunaan debit hardcoded.
+        // Simpan log lokal seketika agar langsung tercatat di riwayat SQLite
+        final log = SprayLog(
+          timestamp: DateTime.now(),
+          durationSeconds: durationSeconds,
+          volumeMl: estimatedVolumeMl,
+          batteryPercentage: _deviceStatus.batteryPercentage,
+          isSolarCharging: _deviceStatus.isSolarCharging,
+          mode: mode,
+          status: 'Success',
+          communicationMethod: 'BLE',
+          deviceKey: _activeDeviceKey ?? 'default',
+        );
+        try {
+          await dbHelper.insertLog(log);
+        } catch (e) {
+          if (kDebugMode) print('Error inserting local spray log: $e');
+        }
       } else {
         _deviceStatus = _deviceStatus.copyWith(activeDurationSeconds: remaining);
         notifyListeners();
@@ -620,7 +668,12 @@ class BluetoothService extends ChangeNotifier {
     _sprayTimer?.cancel();
     
     // Send STOP command via BLE to ESP32 with newline delimiter
-    _sendBleEnvelope({'cmd': 'STOP', 'action': 'stop'});
+    _sendBleEnvelope({
+      'v': 1,
+      't': 'stop',
+      'cmd': 'STOP',
+      'action': 'stop',
+    });
     
     _deviceStatus = _deviceStatus.copyWith(
       isPumpRunning: false,
@@ -658,23 +711,7 @@ class BluetoothService extends ChangeNotifier {
 
   void syncSchedules(List<SpraySchedule> schedules) {
     if (!_isConnected) return;
-
-    final payload = {
-      'cmd': 'SCHEDULE',
-      'schedules': schedules.map((s) => {
-        'id': s.id,
-        'hour': s.hour,
-        'minute': s.minute,
-        'duration': s.durationSeconds,
-        'active': s.isActive ? 1 : 0
-      }).toList()
-    };
-    
-    _sendBleMessage(payload);
-    
-    if (kDebugMode) {
-      print('Schedules synced to ESP32 via BLE: $payload');
-    }
+    pushSchedules(schedules);
   }
 
   @override

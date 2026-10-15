@@ -534,8 +534,18 @@ class _BluetoothPageState extends State<BluetoothPage> {
             allDevices.add(sysDev);
           }
 
-          // 2. Add active live BLE scan results (avoiding duplicates)
+          // 2. Add active live BLE scan results (avoiding duplicates & filtering unknown devices)
           for (var sr in btService.scanResults) {
+            final name = sr.device.platformName.isNotEmpty
+                ? sr.device.platformName.trim()
+                : sr.advertisementData.advName.trim();
+            final hasSprayerService = sr.advertisementData.serviceUuids.any(
+                (u) => u.toString().toLowerCase() == BluetoothService.serviceUuid.toLowerCase());
+            // Abaikan sinyal asing tanpa nama / bukan sprayer
+            if (name.isEmpty && !hasSprayerService) {
+              continue;
+            }
+
             bool alreadyAdded = allDevices.any((d) {
               if (d is fbp.BluetoothDevice) {
                 return d.remoteId == sr.device.remoteId;

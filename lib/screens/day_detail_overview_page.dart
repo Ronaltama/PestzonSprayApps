@@ -147,7 +147,7 @@ class DayDetailOverviewPage extends StatelessWidget {
                   _buildMetricTile(
                     icon: Icons.speed,
                     title: 'Debit Pompa',
-                    value: '5.0 ml/s',
+                    value: '${(status.flowRateMlPerSec > 0 ? status.flowRateMlPerSec : 15.0).toStringAsFixed(1)} ml/s',
                     subtitle: 'Misting Flow Rate',
                     isDark: isDark,
                     cardBg: cardBg,
@@ -158,7 +158,7 @@ class DayDetailOverviewPage extends StatelessWidget {
 
               const SizedBox(height: AppTheme.spacingLG),
 
-              // AI Expert System Status Box
+              // System Status Box
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -176,11 +176,11 @@ class DayDetailOverviewPage extends StatelessWidget {
                             color: primaryAccent,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(Icons.psychology, color: ThemeProvider.blackColor, size: 20),
+                          child: const Icon(Icons.water_drop, color: ThemeProvider.blackColor, size: 20),
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          'Analisis AI & Rekomendasi Dosis',
+                          'Analisis Dosis Semprotan',
                           style: TextStyle(
                             fontFamily: 'Utendo',
                             fontSize: 16,
@@ -192,7 +192,7 @@ class DayDetailOverviewPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Sistem AI mendeteksi kondisi kelembaban udara ideal. Dosis penyemprotan otomatis disesuaikan 30 detik/sesi untuk menjaga kelembaban optimal tanpa menyebabkan penggenangan.',
+                      'Kondisi kelembaban terjaga optimal. Dosis penyemprotan disesuaikan dengan durasi terpasang untuk efisiensi cairan dan perlindungan tanaman.',
                       style: TextStyle(
                         fontFamily: 'Utendo',
                         fontSize: 13,
